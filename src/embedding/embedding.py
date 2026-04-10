@@ -96,7 +96,11 @@ class EmbeddingService:
             compressed_triples.append({
                 "subject": node_mapping.get(t['subject'], t['subject']),
                 "predicate": t['predicate'],
-                "object": node_mapping.get(t['object'], t['object'])
+                "object": node_mapping.get(t['object'], t['object']),
+                "original_subject": t['subject'],
+                "original_object": t['object'],
+                "quote": t.get('quote'),
+                "certainty_score": t.get('certainty_score')
             })
             
         return compressed_triples

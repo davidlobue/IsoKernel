@@ -41,7 +41,12 @@ class GraphProcessor:
                 G.add_node(subject, label=subject)
             if not G.has_node(obj):
                 G.add_node(obj, label=obj)
-            G.add_edge(subject, obj, label=pred, title=pred)
+            edge_data = {"label": pred, "title": pred}
+            if "original_subject" in t: edge_data["original_subject"] = t["original_subject"]
+            if "original_object" in t: edge_data["original_object"] = t["original_object"]
+            if "quote" in t: edge_data["quote"] = t["quote"]
+            if "certainty_score" in t: edge_data["certainty_score"] = t["certainty_score"]
+            G.add_edge(subject, obj, **edge_data)
         return G
 
     def process(self, triples: List[Dict[str, str]], graphs_dir: str = None) -> nx.DiGraph:
@@ -188,9 +193,13 @@ class GraphProcessor:
             schema_data.append({
                 "subject": u,
                 "subject_cluster": G.nodes[u].get("group", -1),
+                "original_subject": data.get("original_subject", ""),
                 "predicate": data.get("label", ""),
                 "object": v,
-                "object_cluster": G.nodes[v].get("group", -1)
+                "object_cluster": G.nodes[v].get("group", -1),
+                "original_object": data.get("original_object", ""),
+                "quote": data.get("quote", ""),
+                "certainty_score": data.get("certainty_score", "")
             })
             
         df = pd.DataFrame(schema_data)
