@@ -9,10 +9,7 @@ extraction:
   max_retries: 3
   
 refinement:
-  # Option A: Topology clustering
-  community_detection: "louvain"  # or "leiden"
-  
-  # Option B: Embedding parameters
+  # Semantic Embedding Parameters
   use_embeddings: true
   embedding_model: "all-MiniLM-L6-v2"
   clustering_method: "agglomerative"  # or "hdbscan"
@@ -33,6 +30,9 @@ refinement:
   # - "most_frequent": Automatically maps the cluster to the string that logically occurred the most times.
   # - "shortest_string": Mappings resolve simply to whichever text length was shortest (Legacy Option).
   hypernym_resolution: "llm_resolution"
+
+  # Graph Topology
+  community_detection: "louvain"  # Algorithms to assign community clusters (e.g., "louvain", "leiden")
   
 output:
   logs_dir: "data/outputs/logs"
