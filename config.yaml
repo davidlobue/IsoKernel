@@ -16,10 +16,22 @@ refinement:
   use_embeddings: true
   embedding_model: "all-MiniLM-L6-v2"
   clustering_method: "agglomerative"  # or "hdbscan"
-  similarity_threshold: 0.8  # Threshold for collapsing nodes using Agglomerative
-  compression_mode: "isolated" # or "unified"
-  compress_fields: ["subject", "object", "predicate"] # toggle any subset of valid fields
-  hypernym_resolution: "most_frequent" # or "shortest_string"
+  # similarity_threshold: Minimum cosine similarity measure required (0.0 to 1.0) to map two string variants together. Higher means stricter mapping.
+  similarity_threshold: 0.8
+  
+  # compression_mode: 
+  # - "isolated": Clusters and deduplicates strings within their own specific silo (subjects with subjects, predicates with predicates).
+  # - "unified": Lumps everything together into a giant pool before measuring semantic distance.
+  compression_mode: "isolated"
+  
+  # compress_fields: Choose exactly which fields across the triplet architecture to run semantic deduplication on.
+  # Options: "subject", "object", "predicate". Leave empty [] to skip compression entirely without disabling model loading.
+  compress_fields: ["subject", "object", "predicate"]
+  
+  # hypernym_resolution: Mechanism for determining the definitive string label representation of a cluster group.
+  # - "most_frequent": Automatically maps the cluster to the string that logically occurred the most times in the original generated triplets.
+  # - "shortest_string": Mappings resolve simply to whichever text length was shortest (Legacy Option).
+  hypernym_resolution: "most_frequent"
   
 output:
   logs_dir: "data/outputs/logs"
