@@ -25,17 +25,17 @@ refinement:
   # Options: "subject", "object", "predicate". Leave empty [] to skip compression entirely without disabling model loading.
   compress_fields: ["subject", "object", "predicate"]
   
+  # Spectral Vector Geometry
+  # Aggressive mathematical tensor decomposition. Identifies the "Principal Eigenvectors" to actively drop linguistic noise from LLM embeddings prior to calculating Semantic Centroids.
+  use_spectral_decomposition: true
+  spectral_components: 12 
+  
   # hypernym_resolution: Mechanism for determining the definitive string label representation of a cluster group.
   # - "semantic_centroid": (Default) Calculates local mathematical vector centroids, then formally attempts Taxonomic Lifting via LLM to find the "Is-A" Concept.
   # - "llm_resolution": Uses the configured LLM to comprehensively find the best generalizable semantic label across all node texts organically regardless of strict deductive rules.
   # - "most_frequent": Automatically maps the cluster to the string that historically occurred the most times locally.
   # - "shortest_string": Mappings resolve simply to whichever literal text length was mathematically shortest (Legacy Option).
   hypernym_resolution: "semantic_centroid"
-
-  # Spectral Vector Geometry
-  # Aggressive mathematical tensor decomposition. Identifies the "Principal Eigenvectors" to actively drop linguistic noise from LLM embeddings prior to calculating Semantic Centroids.
-  use_spectral_decomposition: true
-  spectral_components: 12 
 
   # Graph Topology (Community Density Physics)
   community_detection: "louvain"  # Algorithms to assign community clusters (e.g., "louvain", "leiden", "spectral")
