@@ -70,8 +70,15 @@ class GraphProcessor:
 
         # Step 1: Semantic Compression (Option B) if enabled
         if self.use_embeddings and self.embed_service:
-            processed_triples = self.embed_service.semantic_compression(triples)
+            processed_triples, nlp_logs = self.embed_service.semantic_compression(triples)
+            
             if graphs_dir:
+                schemas_dir = graphs_dir.replace("graphs", "schemas")
+                os.makedirs(schemas_dir, exist_ok=True)
+                
+                self.export_nlp_clusters(nlp_logs, os.path.join(schemas_dir, "nlp_entity_clusters.csv"))
+                self.export_triplet_transformations(processed_triples, os.path.join(schemas_dir, "nlp_triplet_transformations.csv"))
+                
                 compressed_graph = self._build_graph(processed_triples)
                 self.save_visualization(compressed_graph, os.path.join(graphs_dir, "02_semantic_compression.html"))
         else:
@@ -216,3 +223,38 @@ class GraphProcessor:
             df.to_json(output_file, orient='records', indent=4)
         else:
             df.to_csv(output_file + ".csv", index=False)
+
+    def export_nlp_clusters(self, nlp_logs: List[Dict[str, str]], output_file: str):
+        """
+        Exports the raw embedding clusters dictionary natively to CSV.
+        """
+        if not nlp_logs: return
+        logger.info(f"Exporting NLP cluster states to {output_file}")
+        os.makedirs(os.path.dirname(output_file), exist_ok=True)
+        df = pd.DataFrame(nlp_logs)
+        df.to_csv(output_file, index=False)
+        
+    def export_triplet_transformations(self, compressed_triples: List[Dict[str, str]], output_file: str):
+        """
+        Exports a dedicated side-by-side comparison of triple strings before and after semantic compression.
+        """
+        if not compressed_triples: return
+        logger.info(f"Exporting triplet transformations to {output_file}")
+        os.makedirs(os.path.dirname(output_file), exist_ok=True)
+        
+        # We explicitly ensure ordering for readability
+        formatted = []
+        for t in compressed_triples:
+            formatted.append({
+                "original_subject": t.get("original_subject", ""),
+                "final_subject": t.get("subject", ""),
+                "original_predicate": t.get("original_predicate", ""),
+                "final_predicate": t.get("predicate", ""),
+                "original_object": t.get("original_object", ""),
+                "final_object": t.get("object", ""),
+                "quote": t.get("quote", ""),
+                "certainty_score": t.get("certainty_score", "")
+            })
+            
+        df = pd.DataFrame(formatted)
+        df.to_csv(output_file, index=False)

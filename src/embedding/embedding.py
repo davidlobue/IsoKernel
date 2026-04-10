@@ -1,5 +1,5 @@
 import logging
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Tuple
 from src.core.logger import setup_logger
 
 logger = setup_logger("embedding_service")
@@ -71,14 +71,15 @@ class EmbeddingService:
             raise ValueError("Embedder not initialized.")
         return self.embedder.encode(texts)
 
-    def _cluster_and_map(self, nodes_list: List[str], triples: List[Dict[str, str]], target_fields: List[str]) -> Dict[str, str]:
+    def _cluster_and_map(self, nodes_list: List[str], triples: List[Dict[str, str]], target_fields: List[str]) -> Tuple[Dict[str, str], Dict[str, Dict[str, Any]]]:
         if not nodes_list:
-            return {}
+            return {}, {}
             
         logger.info(f"Computing embeddings for {len(nodes_list)} unique nodes in fields: {target_fields}")
         embeddings = self.encode(nodes_list)
         
         node_mapping = {}
+        cluster_logs = {}
         
         if self.clustering_method == "agglomerative":
             from sklearn.cluster import AgglomerativeClustering
@@ -115,7 +116,6 @@ class EmbeddingService:
                 
                 logger.info(f"Sending {len(clusters)} clusters to LLM for semantic hypernym resolution...")
                 
-                # Format to JSON
                 cluster_map = {str(k): v for k, v in clusters.items()}
                 
                 try:
@@ -128,51 +128,63 @@ class EmbeddingService:
                         response_model=LLMHypernymResolutionResult
                     )
                     
-                    # Store mappings safely
                     resolution_map = {res.cluster_id: res.hypernym for res in response.resolutions}
                     
                     for label, members in clusters.items():
-                        # Every cluster gets resolved, even singletons
+                        cluster_id_str = f"c_{label}"
                         mapped_val = resolution_map.get(str(label), sorted(members, key=lambda x: -counts.get(x, 0))[0])
                         for member in members:
                             node_mapping[member] = mapped_val
+                            cluster_logs[member] = {
+                                "nlp_cluster_id": cluster_id_str,
+                                "final_hypernym": mapped_val
+                            }
                             
                 except Exception as e:
                     logger.error(f"LLM Resolution failed: {e}. Falling back to most_frequent.")
                     for label, members in clusters.items():
+                        cluster_id_str = f"c_{label}"
                         representative = sorted(members, key=lambda x: (-counts.get(x, 0), len(x)))[0]
                         for member in members:
                             node_mapping[member] = representative
+                            cluster_logs[member] = {
+                                "nlp_cluster_id": cluster_id_str,
+                                "final_hypernym": representative
+                            }
             else:
-                # Local algorithmic modes (legacy options)
                 for label, members in clusters.items():
-                    if len(members) > 1:
-                        # Resolving logic
-                        if self.hypernym_resolution == "most_frequent":
-                            representative = sorted(members, key=lambda x: (-counts.get(x, 0), len(x)))[0]
-                        else: 
-                            representative = sorted(members, key=len)[0]
-                            
-                        for member in members:
-                            node_mapping[member] = representative
+                    cluster_id_str = f"c_{label}"
+                    # even singletons get mapped logically in the logs now
+                    if self.hypernym_resolution == "most_frequent":
+                        representative = sorted(members, key=lambda x: (-counts.get(x, 0), len(x)))[0]
+                    else: 
+                        representative = sorted(members, key=len)[0]
+                        
+                    for member in members:
+                        node_mapping[member] = representative
+                        cluster_logs[member] = {
+                            "nlp_cluster_id": cluster_id_str,
+                            "final_hypernym": representative
+                        }
         else:
             logger.warning(f"Clustering method {self.clustering_method} not implemented fully.")
             
-        return node_mapping
+        return node_mapping, cluster_logs
 
-    def semantic_compression(self, triples: List[Dict[str, str]]) -> List[Dict[str, str]]:
+    def semantic_compression(self, triples: List[Dict[str, str]]) -> Tuple[List[Dict[str, str]], List[Dict[str, str]]]:
         if not self.embedder:
             logger.warning("Embedder unavailable. Skipping compression.")
-            return triples
+            return triples, []
             
         if not self.compress_fields:
             logger.info("Compression fields array is empty. Skipping compression.")
-            return triples
+            return triples, []
             
         logger.info(f"Running Semantic Compression (Mode: {self.compression_mode}, Fields: {self.compress_fields})...")
         
         global_node_mapping = {}
         field_node_mappings = {f: {} for f in self.compress_fields}
+        all_logs = []
         
         if self.compression_mode == "unified":
             unique_nodes = set()
@@ -180,15 +192,35 @@ class EmbeddingService:
                 for f in self.compress_fields:
                     if f in t:
                         unique_nodes.add(t[f])
-            global_node_mapping = self._cluster_and_map(list(unique_nodes), triples, self.compress_fields)
+            
+            global_node_mapping, global_logs = self._cluster_and_map(list(unique_nodes), triples, self.compress_fields)
+            
+            # format logs
+            for orig, data in global_logs.items():
+                all_logs.append({
+                    "field_type": "unified",
+                    "original_text": orig,
+                    "nlp_cluster_id": data["nlp_cluster_id"],
+                    "final_hypernym": data["final_hypernym"]
+                })
         else:
-            # Isolated mode
             for field in self.compress_fields:
                 unique_nodes = set()
                 for t in triples:
                     if field in t:
                         unique_nodes.add(t[field])
-                field_node_mappings[field] = self._cluster_and_map(list(unique_nodes), triples, [field])
+                
+                f_mapping, f_logs = self._cluster_and_map(list(unique_nodes), triples, [field])
+                field_node_mappings[field] = f_mapping
+                
+                # format logs
+                for orig, data in f_logs.items():
+                    all_logs.append({
+                        "field_type": field,
+                        "original_text": orig,
+                        "nlp_cluster_id": data["nlp_cluster_id"],
+                        "final_hypernym": data["final_hypernym"]
+                    })
         
         # Apply the mapping to triples
         compressed_triples = []
@@ -211,10 +243,11 @@ class EmbeddingService:
                 "subject": mapped_t.get('subject', t.get('subject')),
                 "predicate": mapped_t.get('predicate', t.get('predicate')),
                 "object": mapped_t.get('object', t.get('object')),
-                "original_subject": t.get('subject'),
-                "original_object": t.get('object'),
-                "quote": t.get('quote'),
-                "certainty_score": t.get('certainty_score')
+                "original_subject": t.get('subject', ''),
+                "original_predicate": t.get('predicate', ''),
+                "original_object": t.get('object', ''),
+                "quote": t.get('quote', ''),
+                "certainty_score": t.get('certainty_score', '')
             })
             
-        return compressed_triples
+        return compressed_triples, all_logs
