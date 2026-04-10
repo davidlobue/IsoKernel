@@ -23,6 +23,7 @@ The raw triplets are intercepted and passed into the `SentenceTransformer` Huggi
 
 #### The Mathematics:
 - **Vectorization**: Every single extracted string is mapped onto a 384-dimensional mathematical matrix coordinate.
+- **Spectral Dimensionality Destruction (`use_spectral_decomposition`)**: If enabled, the pipeline natively calculates the **Principal Eigenvectors** (PCA) of the embeddings, violently shattering the Linguistic Fluff tensors down to a strict, core-essence geometry (e.g. 12 dense dimensions). This dramatically isolates fundamental mathematical "truth" from AI noise parameters.
 - **Deduplication Geometry (`compression_mode`)**: 
   - If set to `"isolated"`, Nouns (Subjects/Objects) and Verbs (Predicates) are physically firewalled. Verbs only mathematically group with Verbs.
   - If `"unified"`, they are dumped into one massive dimensional space globally.
@@ -44,7 +45,9 @@ Once the mathematical boundaries of a Geometric Cluster are established (e.g., g
 ### Phase 4: Graph Topology Analysis
 The completely filtered and standardized logic arrays natively deploy into `networkx`. Because all strings are cleanly unified, overlapping subjects logically fuse together into massive structural Super Nodes!
 
-- **Community Physics**: The algorithm loops algorithms like **"Louvain"** or **"Leiden"** sequentially across the network. The mathematics aggressively evaluate the literal density of physical relationship edges between nodes compared against the wider graph.
+- **Community Physics**: The algorithm loops mathematics sequentially across the network to aggressively evaluate the literal density of physical relationship edges between nodes compared against the wider graph.
+  - `"louvain"` or `"leiden"`: Maximizes loop modularity (hunting for circular relationship edge-chains). 
+  - **`"spectral"`**: Explicitly extracts the **Normalized Laplacian Matrix** natively from your network. It tracks the raw Eigenvalues generated and utilizes a programmatic **Eigengap Heuristic Array** to perfectly deduce the mathematical optimal number of total distinct communities hidden in the nodes! It then relies on `scikit-learn` to forcefully shatter the graph along those boundaries.
 - Dense logic interactions are isolated dynamically into explicitly numbered **Topological Communities**. 
 
 The final shape natively prints visually to an interactive HTML canvas, color-coded directly to its Topology physics!
