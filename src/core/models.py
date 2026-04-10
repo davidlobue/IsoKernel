@@ -31,5 +31,12 @@ class ClusterHypernym(BaseModel):
     cluster_id: str = Field(description="The unique identifier for the mapped cluster.")
     hypernym: str = Field(description="The standardized general semantic label that best represents the cluster variants.")
 
-class LLMHypernymResolutionResult(BaseModel):
-    resolutions: List[ClusterHypernym] = Field(description="List of resolved hypernyms mapped to their cluster IDs.")
+class TaxonomicVerification(BaseModel):
+    cluster_id: str = Field(description="The unique identifier for the mapped cluster.")
+    centroid: str = Field(description="The anchor term mathematically centered inside the cluster matrix.")
+    formal_hypernym: str = Field(description="The formal categorical target the node logically belongs to.")
+    members_verified: bool = Field(description="True if ALL members structurally satisfy the strict Is-A categorical taxonomy mapping against the formal_hypernym, otherwise False.")
+    reasoning: str = Field(description="A single sentence deduction structurally validating the Is-A constraints across all members.")
+
+class TaxonomicLiftingResult(BaseModel):
+    resolutions: List[TaxonomicVerification] = Field(description="List of structurally verified taxonomic classifications mapped natively to their parent group.")

@@ -26,10 +26,11 @@ refinement:
   compress_fields: ["subject", "object", "predicate"]
   
   # hypernym_resolution: Mechanism for determining the definitive string label representation of a cluster group.
-  # - "llm_resolution": (Default) Uses the configured LLM to comprehensively find the best generalizable semantic label.
-  # - "most_frequent": Automatically maps the cluster to the string that logically occurred the most times.
-  # - "shortest_string": Mappings resolve simply to whichever text length was shortest (Legacy Option).
-  hypernym_resolution: "llm_resolution"
+  # - "semantic_centroid": (Default) Calculates local mathematical vector centroids, then formally attempts Taxonomic Lifting via LLM to find the "Is-A" Concept.
+  # - "llm_resolution": Uses the configured LLM to comprehensively find the best generalizable semantic label across all node texts organically regardless of strict deductive rules.
+  # - "most_frequent": Automatically maps the cluster to the string that historically occurred the most times locally.
+  # - "shortest_string": Mappings resolve simply to whichever literal text length was mathematically shortest (Legacy Option).
+  hypernym_resolution: "semantic_centroid"
 
   # Graph Topology
   community_detection: "louvain"  # Algorithms to assign community clusters (e.g., "louvain", "leiden")

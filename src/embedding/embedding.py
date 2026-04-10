@@ -11,7 +11,7 @@ class EmbeddingService:
                  similarity_threshold: float = 0.8,
                  compression_mode: str = "unified",
                  compress_fields: List[str] = None,
-                 hypernym_resolution: str = "llm_resolution"):
+                 hypernym_resolution: str = "semantic_centroid"):
         import os
         
         # Check if localized model exists in lib/models/
@@ -34,7 +34,7 @@ class EmbeddingService:
         self.llm_model = None
         
         # Initialize LLM backend if required
-        if self.hypernym_resolution == "llm_resolution":
+        if self.hypernym_resolution in ["llm_resolution", "semantic_centroid"]:
             import instructor
             from openai import OpenAI
             from dotenv import load_dotenv, find_dotenv
@@ -44,7 +44,7 @@ class EmbeddingService:
             self.llm_model = os.getenv("LLM_MODEL_NAME", "gpt-4o")
             base_url = os.getenv("LLM_BASE_URL", None)
             
-            logger.info(f"Initializing synchronous LLM client for hypernyms via '{provider}'")
+            logger.info(f"Initializing synchronous LLM client for Taxonomic/Hypernym mapping via '{provider}'")
             if provider == "local":
                 client = OpenAI(base_url=base_url, api_key="ollama")
                 self.sync_client = instructor.from_openai(client, mode=instructor.Mode.JSON)
@@ -95,7 +95,7 @@ class EmbeddingService:
             )
             labels = clusterer.fit_predict(embeddings)
             
-            # Track frequencies for hypernym resolution
+            # Track frequencies for hypernym resolution tiebreaking
             counts = {}
             for t in triples:
                 for f in target_fields:
@@ -109,7 +109,86 @@ class EmbeddingService:
                     clusters[label] = []
                 clusters[label].append(node)
                 
-            if self.hypernym_resolution == "llm_resolution" and self.sync_client:
+            if self.hypernym_resolution == "semantic_centroid":
+                from sklearn.metrics.pairwise import cosine_similarity
+                
+                # Math arrays prep
+                node_idx_map = {node: idx for idx, node in enumerate(nodes_list)}
+                centroid_clusters = {}
+                
+                # Calculate absolute internal tensors
+                for label, members in clusters.items():
+                    member_idx = [node_idx_map[m] for m in members]
+                    cluster_emb = embeddings[member_idx]
+                    centroid_vec = np.mean(cluster_emb, axis=0).reshape(1, -1)
+                    
+                    similarities = cosine_similarity(centroid_vec, cluster_emb)[0]
+                    closest_idx = np.argmax(similarities)
+                    centroid_member = members[closest_idx]
+                    
+                    centroid_clusters[label] = {
+                        "centroid": centroid_member,
+                        "members": members
+                    }
+                    
+                if self.sync_client:
+                    import json
+                    from src.extraction.prompts import Prompts
+                    from src.core.models import TaxonomicLiftingResult
+                    
+                    logger.info(f"Submitting {len(centroid_clusters)} isolated centroids for Taxonomic Lifting deductive logic...")
+                    try:
+                        response = self.sync_client.chat.completions.create(
+                            model=self.llm_model,
+                            messages=[
+                                {"role": "system", "content": Prompts.TAXONOMIC_LIFTING_SYSTEM},
+                                {"role": "user", "content": Prompts.get_taxonomic_user(json.dumps(centroid_clusters, indent=2))}
+                            ],
+                            response_model=TaxonomicLiftingResult
+                        )
+                        
+                        resolution_map = {}
+                        for res in response.resolutions:
+                            if res.members_verified:
+                                resolution_map[res.cluster_id] = res.formal_hypernym
+                                logger.info(f"Taxonomic Lift Verified [{res.cluster_id}]: {res.centroid} -> {res.formal_hypernym}")
+                            else:
+                                resolution_map[res.cluster_id] = res.centroid
+                                logger.warning(f"Taxonomic Lift Rejected [Is-A failed!]: {res.centroid} -> Reverting instantly to raw geometric centroid.")
+                                
+                        for label, members in clusters.items():
+                            cluster_id_str = f"c_{label}"
+                            mapped_val = resolution_map.get(str(label), centroid_clusters[label]["centroid"])
+                            for member in members:
+                                node_mapping[member] = mapped_val
+                                cluster_logs[member] = {
+                                    "nlp_cluster_id": cluster_id_str,
+                                    "final_hypernym": mapped_val
+                                }
+                    except Exception as e:
+                        logger.error(f"Taxonomic Engine failed natively: {e}. Executing unconditional mathematical Centroid mapping globally.")
+                        for label, members in clusters.items():
+                            cluster_id_str = f"c_{label}"
+                            mapped_val = centroid_clusters[label]["centroid"]
+                            for member in members:
+                                node_mapping[member] = mapped_val
+                                cluster_logs[member] = {
+                                    "nlp_cluster_id": cluster_id_str,
+                                    "final_hypernym": mapped_val
+                                }
+                else:
+                    logger.info("Executing isolated local Semantic Centroid mapping across clustering geometries...")
+                    for label, members in clusters.items():
+                        cluster_id_str = f"c_{label}"
+                        mapped_val = centroid_clusters[label]["centroid"]
+                        for member in members:
+                            node_mapping[member] = mapped_val
+                            cluster_logs[member] = {
+                                "nlp_cluster_id": cluster_id_str,
+                                "final_hypernym": mapped_val
+                            }
+                            
+            elif self.hypernym_resolution == "llm_resolution" and self.sync_client:
                 import json
                 from src.extraction.prompts import Prompts
                 from src.core.models import LLMHypernymResolutionResult
@@ -132,7 +211,7 @@ class EmbeddingService:
                     
                     for label, members in clusters.items():
                         cluster_id_str = f"c_{label}"
-                        mapped_val = resolution_map.get(str(label), sorted(members, key=lambda x: -counts.get(x, 0))[0])
+                        mapped_val = resolution_map.get(str(label), sorted(members, key=lambda x: -counts.get(x, 0))[0]) # tiebreaker
                         for member in members:
                             node_mapping[member] = mapped_val
                             cluster_logs[member] = {
@@ -154,7 +233,6 @@ class EmbeddingService:
             else:
                 for label, members in clusters.items():
                     cluster_id_str = f"c_{label}"
-                    # even singletons get mapped logically in the logs now
                     if self.hypernym_resolution == "most_frequent":
                         representative = sorted(members, key=lambda x: (-counts.get(x, 0), len(x)))[0]
                     else: 
