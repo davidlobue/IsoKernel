@@ -18,7 +18,10 @@ class GraphProcessor:
                  embedding_model: str = "all-MiniLM-L6-v2",
                  clustering_method: str = "agglomerative",
                  similarity_threshold: float = 0.8,
-                 community_detection: str = "louvain"):
+                 community_detection: str = "louvain",
+                 compression_mode: str = "unified",
+                 compress_fields: List[str] = None,
+                 hypernym_resolution: str = "shortest_string"):
         self.use_embeddings = use_embeddings
         self.community_detection = community_detection.lower()
         
@@ -28,7 +31,10 @@ class GraphProcessor:
             self.embed_service = EmbeddingService(
                 embedding_model=embedding_model,
                 clustering_method=clustering_method,
-                similarity_threshold=similarity_threshold
+                similarity_threshold=similarity_threshold,
+                compression_mode=compression_mode,
+                compress_fields=compress_fields,
+                hypernym_resolution=hypernym_resolution
             )
 
     def _build_graph(self, triples: List[Dict[str, str]]) -> nx.DiGraph:

@@ -136,7 +136,10 @@ class PipelineOrchestrator:
                 embedding_model=ref_cfg.get("embedding_model", "all-MiniLM-L6-v2"),
                 clustering_method=ref_cfg.get("clustering_method", "agglomerative"),
                 similarity_threshold=ref_cfg.get("similarity_threshold", 0.8),
-                community_detection=ref_cfg.get("community_detection", "louvain")
+                community_detection=ref_cfg.get("community_detection", "louvain"),
+                compression_mode=ref_cfg.get("compression_mode", "unified"),
+                compress_fields=ref_cfg.get("compress_fields", ["subject", "object"]),
+                hypernym_resolution=ref_cfg.get("hypernym_resolution", "shortest_string")
             )
             
             graphs_dir = self.config.get("output", {}).get("graphs_dir", "data/outputs/graphs")

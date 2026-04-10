@@ -17,6 +17,9 @@ refinement:
   embedding_model: "all-MiniLM-L6-v2"
   clustering_method: "agglomerative"  # or "hdbscan"
   similarity_threshold: 0.8  # Threshold for collapsing nodes using Agglomerative
+  compression_mode: "isolated" # or "unified"
+  compress_fields: ["subject", "object", "predicate"] # toggle any subset of valid fields
+  hypernym_resolution: "most_frequent" # or "shortest_string"
   
 output:
   logs_dir: "data/outputs/logs"

@@ -8,7 +8,10 @@ class EmbeddingService:
     def __init__(self, 
                  embedding_model: str = "all-MiniLM-L6-v2",
                  clustering_method: str = "agglomerative",
-                 similarity_threshold: float = 0.8):
+                 similarity_threshold: float = 0.8,
+                 compression_mode: str = "unified",
+                 compress_fields: List[str] = None,
+                 hypernym_resolution: str = "shortest_string"):
         import os
         
         # Check if localized model exists in lib/models/
@@ -22,6 +25,10 @@ class EmbeddingService:
             
         self.clustering_method = clustering_method
         self.similarity_threshold = similarity_threshold
+        self.compression_mode = compression_mode
+        self.compress_fields = compress_fields if compress_fields is not None else ["subject", "object"]
+        self.hypernym_resolution = hypernym_resolution
+        
         self.embedder = None
         
         logger.info(f"Initializing embedding model '{self.embedding_model}'")
@@ -35,25 +42,12 @@ class EmbeddingService:
         if not self.embedder:
             raise ValueError("Embedder not initialized.")
         return self.embedder.encode(texts)
-        
-    def semantic_compression(self, triples: List[Dict[str, str]]) -> List[Dict[str, str]]:
-        if not self.embedder:
-            logger.warning("Embedder unavailable. Skipping compression.")
-            return triples
-            
-        logger.info("Running Semantic Compression (Option B)...")
-        # Extract all unique nodes (subjects and objects)
-        unique_nodes = set()
-        for t in triples:
-            unique_nodes.add(t['subject'])
-            unique_nodes.add(t['object'])
-            
-        nodes_list = list(unique_nodes)
-        
+
+    def _cluster_and_map(self, nodes_list: List[str], triples: List[Dict[str, str]], target_fields: List[str]) -> Dict[str, str]:
         if not nodes_list:
-            return triples
+            return {}
             
-        logger.info(f"Computing embeddings for {len(nodes_list)} unique nodes.")
+        logger.info(f"Computing embeddings for {len(nodes_list)} unique nodes in fields: {target_fields}")
         embeddings = self.encode(nodes_list)
         
         node_mapping = {}
@@ -72,7 +66,14 @@ class EmbeddingService:
             )
             labels = clusterer.fit_predict(embeddings)
             
-            # Create mapping from node to a representative hypernym (e.g., shortest string in cluster)
+            # Track frequencies for hypernym resolution
+            counts = {}
+            for t in triples:
+                for f in target_fields:
+                    if f in t:
+                        val = t[f]
+                        counts[val] = counts.get(val, 0) + 1
+            
             clusters = {}
             for node, label in zip(nodes_list, labels):
                 if label not in clusters:
@@ -82,23 +83,75 @@ class EmbeddingService:
             for label, members in clusters.items():
                 if len(members) > 1:
                     logger.debug(f"Found cluster resolving: {members}")
-                # Simple heuristical hypernym: shortest string
-                representative = sorted(members, key=len)[0]
+                
+                # Resolving logic
+                if self.hypernym_resolution == "most_frequent":
+                    # Sort by frequency (descending), then by length as tie-breaker
+                    representative = sorted(members, key=lambda x: (-counts.get(x, 0), len(x)))[0]
+                else: 
+                    # Default: shortest string
+                    representative = sorted(members, key=len)[0]
+                    
                 for member in members:
                     node_mapping[member] = representative
         else:
             logger.warning(f"Clustering method {self.clustering_method} not implemented fully, skipping compression.")
+            
+        return node_mapping
+
+    def semantic_compression(self, triples: List[Dict[str, str]]) -> List[Dict[str, str]]:
+        if not self.embedder:
+            logger.warning("Embedder unavailable. Skipping compression.")
             return triples
             
+        if not self.compress_fields:
+            logger.info("Compression fields array is empty. Skipping compression.")
+            return triples
+            
+        logger.info(f"Running Semantic Compression (Mode: {self.compression_mode}, Fields: {self.compress_fields})...")
+        
+        global_node_mapping = {}
+        field_node_mappings = {f: {} for f in self.compress_fields}
+        
+        if self.compression_mode == "unified":
+            unique_nodes = set()
+            for t in triples:
+                for f in self.compress_fields:
+                    if f in t:
+                        unique_nodes.add(t[f])
+            global_node_mapping = self._cluster_and_map(list(unique_nodes), triples, self.compress_fields)
+        else:
+            # Isolated mode
+            for field in self.compress_fields:
+                unique_nodes = set()
+                for t in triples:
+                    if field in t:
+                        unique_nodes.add(t[field])
+                field_node_mappings[field] = self._cluster_and_map(list(unique_nodes), triples, [field])
+        
         # Apply the mapping to triples
         compressed_triples = []
         for t in triples:
+            mapped_t = {}
+            for key, val in t.items():
+                mapped_t[key] = val  # copy default
+                
+            if self.compression_mode == "unified":
+                for f in self.compress_fields:
+                    if f in t:
+                        mapped_t[f] = global_node_mapping.get(t[f], t[f])
+            else:
+                for f in self.compress_fields:
+                    if f in t:
+                        mapped_t[f] = field_node_mappings.get(f, {}).get(t[f], t[f])
+                        
+            # Carry over original strings tracking
             compressed_triples.append({
-                "subject": node_mapping.get(t['subject'], t['subject']),
-                "predicate": t['predicate'],
-                "object": node_mapping.get(t['object'], t['object']),
-                "original_subject": t['subject'],
-                "original_object": t['object'],
+                "subject": mapped_t.get('subject', t.get('subject')),
+                "predicate": mapped_t.get('predicate', t.get('predicate')),
+                "object": mapped_t.get('object', t.get('object')),
+                "original_subject": t.get('subject'),
+                "original_object": t.get('object'),
                 "quote": t.get('quote'),
                 "certainty_score": t.get('certainty_score')
             })
