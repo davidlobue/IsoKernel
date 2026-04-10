@@ -105,7 +105,8 @@ class PipelineOrchestrator:
                     all_triples.extend(res)
                 return all_triples
 
-            triples.extend(asyncio.run(_extract_all(documents_to_process)))
+            loop = asyncio.get_event_loop()
+            triples.extend(loop.run_until_complete(_extract_all(documents_to_process)))
             
             # Save Phase 1 output
             out_dir = self.config.get("output", {}).get("schemas_dir", "data/outputs/schemas")
