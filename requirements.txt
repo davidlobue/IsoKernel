@@ -1,0 +1,13 @@
+networkx
+python-louvain
+cdlib
+sentence-transformers
+scikit-learn
+openai
+instructor
+pydantic
+pyvis
+pandas
+pyyaml
+jupyter
+python-dotenv

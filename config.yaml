@@ -1,0 +1,24 @@
+# IsoKernel Master Configuration
+
+pipeline:
+  run_phase_1: true
+  run_phase_2: true
+  
+extraction:
+  domain: "general knowledge"
+  max_retries: 3
+  
+refinement:
+  # Option A: Topology clustering
+  community_detection: "louvain"  # or "leiden"
+  
+  # Option B: Embedding parameters
+  use_embeddings: true
+  embedding_model: "all-MiniLM-L6-v2"
+  clustering_method: "agglomerative"  # or "hdbscan"
+  similarity_threshold: 0.8  # Threshold for collapsing nodes using Agglomerative
+  
+output:
+  logs_dir: "data/outputs/logs"
+  schemas_dir: "data/outputs/schemas"
+  graphs_dir: "data/outputs/graphs"
