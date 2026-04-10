@@ -11,7 +11,9 @@ class EmbeddingService:
                  similarity_threshold: float = 0.8,
                  compression_mode: str = "unified",
                  compress_fields: List[str] = None,
-                 hypernym_resolution: str = "semantic_centroid"):
+                 hypernym_resolution: str = "semantic_centroid",
+                 use_spectral_decomposition: bool = True,
+                 spectral_components: int = 12):
         import os
         
         # Check if localized model exists in lib/models/
@@ -28,6 +30,8 @@ class EmbeddingService:
         self.compression_mode = compression_mode
         self.compress_fields = compress_fields if compress_fields is not None else ["subject", "object"]
         self.hypernym_resolution = hypernym_resolution
+        self.use_spectral_decomposition = use_spectral_decomposition
+        self.spectral_components = spectral_components
         
         self.embedder = None
         self.sync_client = None
@@ -77,6 +81,18 @@ class EmbeddingService:
             
         logger.info(f"Computing embeddings for {len(nodes_list)} unique nodes in fields: {target_fields}")
         embeddings = self.encode(nodes_list)
+        
+        if self.use_spectral_decomposition:
+            from sklearn.decomposition import PCA
+            
+            # Secure bounds handling. We mathematically cannot run PCA for more components than the total dimension or nodes list length.
+            n_comp = min(self.spectral_components, len(nodes_list), embeddings.shape[1])
+            if n_comp > 1:
+                logger.info(f"Applying Spectral Vector Geometry (PCA) compressing 384-dimensions down to top {n_comp} invariant principal eigenvectors...")
+                pca = PCA(n_components=n_comp)
+                embeddings = pca.fit_transform(embeddings)
+            else:
+                logger.info("Node density too low to deploy Spectral decomposition bounds algebraically. Skipping mathematics.")
         
         node_mapping = {}
         cluster_logs = {}

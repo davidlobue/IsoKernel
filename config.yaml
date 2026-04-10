@@ -32,8 +32,13 @@ refinement:
   # - "shortest_string": Mappings resolve simply to whichever literal text length was mathematically shortest (Legacy Option).
   hypernym_resolution: "semantic_centroid"
 
-  # Graph Topology
-  community_detection: "louvain"  # Algorithms to assign community clusters (e.g., "louvain", "leiden")
+  # Spectral Vector Geometry
+  # Aggressive mathematical tensor decomposition. Identifies the "Principal Eigenvectors" to actively drop linguistic noise from LLM embeddings prior to calculating Semantic Centroids.
+  use_spectral_decomposition: true
+  spectral_components: 12 
+
+  # Graph Topology (Community Density Physics)
+  community_detection: "louvain"  # Algorithms to assign community clusters (e.g., "louvain", "leiden", "spectral")
   
 output:
   logs_dir: "data/outputs/logs"

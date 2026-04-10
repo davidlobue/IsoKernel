@@ -21,7 +21,9 @@ class GraphProcessor:
                  community_detection: str = "louvain",
                  compression_mode: str = "unified",
                  compress_fields: List[str] = None,
-                 hypernym_resolution: str = "shortest_string"):
+                 hypernym_resolution: str = "shortest_string",
+                 use_spectral_decomposition: bool = True,
+                 spectral_components: int = 12):
         self.use_embeddings = use_embeddings
         self.community_detection = community_detection.lower()
         
@@ -34,7 +36,9 @@ class GraphProcessor:
                 similarity_threshold=similarity_threshold,
                 compression_mode=compression_mode,
                 compress_fields=compress_fields,
-                hypernym_resolution=hypernym_resolution
+                hypernym_resolution=hypernym_resolution,
+                use_spectral_decomposition=use_spectral_decomposition,
+                spectral_components=spectral_components
             )
 
     def _build_graph(self, triples: List[Dict[str, str]]) -> nx.DiGraph:
@@ -107,6 +111,29 @@ class GraphProcessor:
                 partition = {k: v[0] for k, v in partition.items()}
             except ImportError:
                 logger.error("cdlib not installed. Falling back to simple partition.")
+        elif self.community_detection == "spectral":
+            import numpy as np
+            from sklearn.cluster import SpectralClustering
+            
+            # Eigengap Heuristic Array Math
+            logger.info("Computing active Laplacian matrices dynamically to locate maximum Eigengap structural breaks...")
+            laplacian = nx.normalized_laplacian_matrix(undirected_G).toarray()
+            eigenvalues = np.linalg.eigvalsh(laplacian)
+            
+            # We track the delta jumps between consecutive eigenvalues
+            diffs = np.diff(eigenvalues)
+            # Find the max gap solely in the first half of eigenvalues to brutally prevent total over-segmentation fragmentation
+            n_clusters = np.argmax(diffs[:len(diffs)//2]) + 1
+            if n_clusters < 2: n_clusters = 2
+            
+            logger.info(f"Spectral algorithm solved native Eigengap target optimally mapping {n_clusters} structural cluster partitions!")
+            adj_matrix = nx.to_numpy_array(undirected_G)
+            
+            sc = SpectralClustering(n_clusters=n_clusters, affinity='precomputed', assign_labels='kmeans')
+            labels = sc.fit_predict(adj_matrix)
+            
+            for idx, node in enumerate(undirected_G.nodes()):
+                partition[node] = labels[idx]
         else:
             logger.warning("No valid community detection chosen. Proceeding without partitions.")
 
