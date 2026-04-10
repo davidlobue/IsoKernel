@@ -77,7 +77,7 @@ class GraphProcessor:
                 os.makedirs(schemas_dir, exist_ok=True)
                 
                 self.export_nlp_clusters(nlp_logs, os.path.join(schemas_dir, "nlp_entity_clusters.csv"))
-                self.export_triplet_transformations(processed_triples, os.path.join(schemas_dir, "nlp_triplet_transformations.csv"))
+                self.export_triplet_transformations(processed_triples, nlp_logs, os.path.join(schemas_dir, "nlp_triplet_transformations.csv"))
                 
                 compressed_graph = self._build_graph(processed_triples)
                 self.save_visualization(compressed_graph, os.path.join(graphs_dir, "02_semantic_compression.html"))
@@ -234,27 +234,58 @@ class GraphProcessor:
         df = pd.DataFrame(nlp_logs)
         df.to_csv(output_file, index=False)
         
-    def export_triplet_transformations(self, compressed_triples: List[Dict[str, str]], output_file: str):
+    def export_triplet_transformations(self, compressed_triples: List[Dict[str, str]], nlp_logs: List[Dict[str, str]], output_file: str):
         """
-        Exports a dedicated side-by-side comparison of triple strings before and after semantic compression.
+        Exports a dedicated long-format transformation flat table combining all triplets arrays symmetrically.
         """
         if not compressed_triples: return
-        logger.info(f"Exporting triplet transformations to {output_file}")
+        logger.info(f"Exporting long-format triplet transformations to {output_file}")
         os.makedirs(os.path.dirname(output_file), exist_ok=True)
         
-        # We explicitly ensure ordering for readability
+        # Build quick dictionary lookup against the geometric logs to map pure clusters
+        cluster_lookup = {}
+        for log in nlp_logs:
+            f_type = log.get("field_type", "")
+            orig = log.get("original_text", "")
+            cid = log.get("nlp_cluster_id", "")
+            if f_type == "unified":
+                cluster_lookup[("subject", orig)] = cid
+                cluster_lookup[("predicate", orig)] = cid
+                cluster_lookup[("object", orig)] = cid
+            else:
+                cluster_lookup[(f_type, orig)] = cid
+                
+        # We explicitly enforce isolated long rows for the three vectors
         formatted = []
         for t in compressed_triples:
-            formatted.append({
-                "original_subject": t.get("original_subject", ""),
-                "final_subject": t.get("subject", ""),
-                "original_predicate": t.get("original_predicate", ""),
-                "final_predicate": t.get("predicate", ""),
-                "original_object": t.get("original_object", ""),
-                "final_object": t.get("object", ""),
-                "quote": t.get("quote", ""),
-                "certainty_score": t.get("certainty_score", "")
-            })
+            quote = t.get("quote", "")
+            
+            # Sequence: Subject
+            orig_s = t.get("original_subject", "")
+            final_s = t.get("subject", "")
+            if orig_s: # skip trailing empties
+                formatted.append({
+                    "type": "subject", "original": orig_s, "final": final_s,
+                    "cluster": cluster_lookup.get(("subject", orig_s), ""), "quote": quote
+                })
+                
+            # Sequence: Predicate
+            orig_p = t.get("original_predicate", "")
+            final_p = t.get("predicate", "")
+            if orig_p:
+                formatted.append({
+                    "type": "predicate", "original": orig_p, "final": final_p,
+                    "cluster": cluster_lookup.get(("predicate", orig_p), ""), "quote": quote
+                })
+                
+            # Sequence: Object
+            orig_o = t.get("original_object", "")
+            final_o = t.get("object", "")
+            if orig_o:
+                formatted.append({
+                    "type": "object", "original": orig_o, "final": final_o,
+                    "cluster": cluster_lookup.get(("object", orig_o), ""), "quote": quote
+                })
             
         df = pd.DataFrame(formatted)
         df.to_csv(output_file, index=False)
