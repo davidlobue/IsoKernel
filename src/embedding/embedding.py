@@ -11,7 +11,7 @@ class EmbeddingService:
                  similarity_threshold: float = 0.8,
                  compression_mode: str = "unified",
                  compress_fields: List[str] = None,
-                 hypernym_resolution: str = "shortest_string"):
+                 hypernym_resolution: str = "llm_resolution"):
         import os
         
         # Check if localized model exists in lib/models/
@@ -30,7 +30,35 @@ class EmbeddingService:
         self.hypernym_resolution = hypernym_resolution
         
         self.embedder = None
+        self.sync_client = None
+        self.llm_model = None
         
+        # Initialize LLM backend if required
+        if self.hypernym_resolution == "llm_resolution":
+            import instructor
+            from openai import OpenAI
+            from dotenv import load_dotenv, find_dotenv
+            load_dotenv(find_dotenv())
+            
+            provider = os.getenv("LLM_PROVIDER", "openai").lower()
+            self.llm_model = os.getenv("LLM_MODEL_NAME", "gpt-4o")
+            base_url = os.getenv("LLM_BASE_URL", None)
+            
+            logger.info(f"Initializing synchronous LLM client for hypernyms via '{provider}'")
+            if provider == "local":
+                client = OpenAI(base_url=base_url, api_key="ollama")
+                self.sync_client = instructor.from_openai(client, mode=instructor.Mode.JSON)
+            elif provider == "google":
+                try:
+                    import vertexai
+                    from vertexai.generative_models import GenerativeModel
+                    model_instance = GenerativeModel(self.llm_model)
+                    self.sync_client = instructor.from_vertexai(model_instance, mode=instructor.Mode.VERTEXAI_TOOLS)
+                except ImportError:
+                    logger.error("google-cloud-aiplatform is required for vertexai in synchronous mode")
+            else:
+                self.sync_client = instructor.from_openai(OpenAI())
+                
         logger.info(f"Initializing embedding model '{self.embedding_model}'")
         try:
             from sentence_transformers import SentenceTransformer
@@ -80,22 +108,55 @@ class EmbeddingService:
                     clusters[label] = []
                 clusters[label].append(node)
                 
-            for label, members in clusters.items():
-                if len(members) > 1:
-                    logger.debug(f"Found cluster resolving: {members}")
+            if self.hypernym_resolution == "llm_resolution" and self.sync_client:
+                import json
+                from src.extraction.prompts import Prompts
+                from src.core.models import LLMHypernymResolutionResult
                 
-                # Resolving logic
-                if self.hypernym_resolution == "most_frequent":
-                    # Sort by frequency (descending), then by length as tie-breaker
-                    representative = sorted(members, key=lambda x: (-counts.get(x, 0), len(x)))[0]
-                else: 
-                    # Default: shortest string
-                    representative = sorted(members, key=len)[0]
+                logger.info(f"Sending {len(clusters)} clusters to LLM for semantic hypernym resolution...")
+                
+                # Format to JSON
+                cluster_map = {str(k): v for k, v in clusters.items()}
+                
+                try:
+                    response = self.sync_client.chat.completions.create(
+                        model=self.llm_model,
+                        messages=[
+                            {"role": "system", "content": Prompts.HYPERNYM_SYSTEM},
+                            {"role": "user", "content": Prompts.get_hypernym_user(json.dumps(cluster_map, indent=2))}
+                        ],
+                        response_model=LLMHypernymResolutionResult
+                    )
                     
-                for member in members:
-                    node_mapping[member] = representative
+                    # Store mappings safely
+                    resolution_map = {res.cluster_id: res.hypernym for res in response.resolutions}
+                    
+                    for label, members in clusters.items():
+                        # Every cluster gets resolved, even singletons
+                        mapped_val = resolution_map.get(str(label), sorted(members, key=lambda x: -counts.get(x, 0))[0])
+                        for member in members:
+                            node_mapping[member] = mapped_val
+                            
+                except Exception as e:
+                    logger.error(f"LLM Resolution failed: {e}. Falling back to most_frequent.")
+                    for label, members in clusters.items():
+                        representative = sorted(members, key=lambda x: (-counts.get(x, 0), len(x)))[0]
+                        for member in members:
+                            node_mapping[member] = representative
+            else:
+                # Local algorithmic modes (legacy options)
+                for label, members in clusters.items():
+                    if len(members) > 1:
+                        # Resolving logic
+                        if self.hypernym_resolution == "most_frequent":
+                            representative = sorted(members, key=lambda x: (-counts.get(x, 0), len(x)))[0]
+                        else: 
+                            representative = sorted(members, key=len)[0]
+                            
+                        for member in members:
+                            node_mapping[member] = representative
         else:
-            logger.warning(f"Clustering method {self.clustering_method} not implemented fully, skipping compression.")
+            logger.warning(f"Clustering method {self.clustering_method} not implemented fully.")
             
         return node_mapping
 

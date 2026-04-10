@@ -23,3 +23,25 @@ class Prompts:
         {text_content}
         </source_text>
         """
+
+    HYPERNYM_SYSTEM = """
+    You are an intelligent linguistic analyzer tasked with Semantic Resolution.
+    You will receive a JSON dictionary where the keys are cluster IDs, and the values are lists of string variants extracted from text (nouns and verbs).
+    For EACH cluster, your job is to return a SINGLE generalized, standardized string that acts as the best hypernym or canonical representation for the group.
+    
+    Rules for singletons (lists with 1 string):
+    - Clean up capitalization, fix grammatical noise, and return the generalized form (e.g. ['is working with'] -> 'works with', or ['The Google corp'] -> 'Google').
+    
+    Rules for larger clusters:
+    - Return the best encompassing label that unifies all the noise (e.g. ['Google LLC', 'google', 'The search giant'] -> 'Google').
+    """
+
+    @staticmethod
+    def get_hypernym_user(cluster_map_json: str) -> str:
+        return f"""
+        Map the following clusters to their ideal canonical hypernym:
+        
+        <clusters>
+        {cluster_map_json}
+        </clusters>
+        """

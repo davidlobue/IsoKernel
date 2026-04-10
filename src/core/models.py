@@ -26,3 +26,10 @@ class TripleExtractionResult(BaseModel):
 class DocumentSource(BaseModel):
     id: str = Field(description="Unique identifier for the document.")
     text_content: str = Field(description="Raw text content of the document.")
+
+class ClusterHypernym(BaseModel):
+    cluster_id: str = Field(description="The unique identifier for the mapped cluster.")
+    hypernym: str = Field(description="The standardized general semantic label that best represents the cluster variants.")
+
+class LLMHypernymResolutionResult(BaseModel):
+    resolutions: List[ClusterHypernym] = Field(description="List of resolved hypernyms mapped to their cluster IDs.")

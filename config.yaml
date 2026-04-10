@@ -29,9 +29,10 @@ refinement:
   compress_fields: ["subject", "object", "predicate"]
   
   # hypernym_resolution: Mechanism for determining the definitive string label representation of a cluster group.
-  # - "most_frequent": Automatically maps the cluster to the string that logically occurred the most times in the original generated triplets.
+  # - "llm_resolution": (Default) Uses the configured LLM to comprehensively find the best generalizable semantic label.
+  # - "most_frequent": Automatically maps the cluster to the string that logically occurred the most times.
   # - "shortest_string": Mappings resolve simply to whichever text length was shortest (Legacy Option).
-  hypernym_resolution: "most_frequent"
+  hypernym_resolution: "llm_resolution"
   
 output:
   logs_dir: "data/outputs/logs"
