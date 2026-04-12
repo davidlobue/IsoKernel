@@ -3,15 +3,19 @@
 pipeline:
   run_phase_1: true
   run_phase_2: true
+  run_phase_4: true
+  max_concurrent_llm_calls: 4
   
 extraction:
   domain: "general knowledge"
   max_retries: 3
+  theme_chunk_max_words: 4000
+  triple_chunk_max_words: 1000
   
 refinement:
   # Semantic Embedding Parameters
   use_embeddings: true
-  embedding_model: "all-MiniLM-L6-v2"
+  embedding_model: "jinaai/jina-embeddings-v2-small-en"
   clustering_method: "agglomerative"  # or "hdbscan"
   # similarity_threshold: Minimum cosine similarity measure required (0.0 to 1.0) to map two string variants together. Higher means stricter mapping.
   similarity_threshold: 0.8
@@ -42,5 +46,6 @@ refinement:
   
 output:
   logs_dir: "data/outputs/logs"
+  themes_dir: "data/outputs/themes"
   schemas_dir: "data/outputs/schemas"
   graphs_dir: "data/outputs/graphs"

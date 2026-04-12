@@ -13,36 +13,20 @@ except ImportError:
 logger = setup_logger("phase2_processor")
 
 class GraphProcessor:
-    def __init__(self, 
-                 use_embeddings: bool = True,
-                 embedding_model: str = "all-MiniLM-L6-v2",
-                 clustering_method: str = "agglomerative",
-                 similarity_threshold: float = 0.8,
-                 community_detection: str = "louvain",
-                 compression_mode: str = "unified",
-                 compress_fields: List[str] = None,
-                 hypernym_resolution: str = "shortest_string",
-                 use_spectral_decomposition: bool = True,
-                 spectral_components: int = 12):
-        self.use_embeddings = use_embeddings
+    def __init__(self, community_detection: str = "louvain"):
         self.community_detection = community_detection.lower()
-        
-        self.embed_service = None
-        if self.use_embeddings:
-            from src.embedding.embedding import EmbeddingService
-            self.embed_service = EmbeddingService(
-                embedding_model=embedding_model,
-                clustering_method=clustering_method,
-                similarity_threshold=similarity_threshold,
-                compression_mode=compression_mode,
-                compress_fields=compress_fields,
-                hypernym_resolution=hypernym_resolution,
-                use_spectral_decomposition=use_spectral_decomposition,
-                spectral_components=spectral_components
-            )
 
     def _build_graph(self, triples: List[Dict[str, str]]) -> nx.DiGraph:
+        import math
         G = nx.DiGraph()
+        
+        # Calculate Predicate Frequency for Entropy Setup
+        pred_freq = {}
+        total_triples = len(triples)
+        for t in triples:
+            p = t['predicate']
+            pred_freq[p] = pred_freq.get(p, 0) + 1
+            
         for t in triples:
             subject = t['subject']
             pred = t['predicate']
@@ -51,7 +35,12 @@ class GraphProcessor:
                 G.add_node(subject, label=subject)
             if not G.has_node(obj):
                 G.add_node(obj, label=obj)
-            edge_data = {"label": pred, "title": pred}
+                
+            # Semantic Entropy Splitter (Inverse Frequency)
+            freq = pred_freq[pred]
+            weight = max(0.01, math.log10(total_triples / freq)) if freq > 0 else 0.01
+
+            edge_data = {"label": pred, "title": pred, "weight": weight}
             if "original_subject" in t: edge_data["original_subject"] = t["original_subject"]
             if "original_object" in t: edge_data["original_object"] = t["original_object"]
             if "quote" in t: edge_data["quote"] = t["quote"]
@@ -72,21 +61,7 @@ class GraphProcessor:
             initial_graph = self._build_graph(triples)
             self.save_visualization(initial_graph, os.path.join(graphs_dir, "01_initial_population.html"))
 
-        # Step 1: Semantic Compression (Option B) if enabled
-        if self.use_embeddings and self.embed_service:
-            processed_triples, nlp_logs = self.embed_service.semantic_compression(triples)
-            
-            if graphs_dir:
-                schemas_dir = graphs_dir.replace("graphs", "schemas")
-                os.makedirs(schemas_dir, exist_ok=True)
-                
-                self.export_nlp_clusters(nlp_logs, os.path.join(schemas_dir, "nlp_entity_clusters.csv"))
-                self.export_triplet_transformations(processed_triples, nlp_logs, os.path.join(schemas_dir, "nlp_triplet_transformations.csv"))
-                
-                compressed_graph = self._build_graph(processed_triples)
-                self.save_visualization(compressed_graph, os.path.join(graphs_dir, "02_semantic_compression.html"))
-        else:
-            processed_triples = triples
+        processed_triples = triples
             
         # Step 2: Build Directed Graph
         logger.info("Building Core Directed Graph...")
@@ -137,9 +112,55 @@ class GraphProcessor:
         else:
             logger.warning("No valid community detection chosen. Proceeding without partitions.")
 
-        # Assign partition to nodes
-        for node, comm_id in partition.items():
-            G.nodes[node]['group'] = comm_id
+        # Structural Jaccard Merging
+        # Pre-group predicates by community dynamically
+        community_predicates = {}
+        for u, v, data in undirected_G.edges(data=True):
+            cu = partition.get(u, -1)
+            cv = partition.get(v, -1)
+            pred = data.get('label', '')
+            if cu != -1:
+                if cu not in community_predicates: community_predicates[cu] = set()
+                community_predicates[cu].add(pred)
+            if cv != -1 and cv != cu:
+                if cv not in community_predicates: community_predicates[cv] = set()
+                community_predicates[cv].add(pred)
+
+        merged_partition = partition.copy()
+        comm_ids = list(community_predicates.keys())
+        for i in range(len(comm_ids)):
+            for j in range(i + 1, len(comm_ids)):
+                c1, c2 = comm_ids[i], comm_ids[j]
+                preds1 = community_predicates.get(c1, set())
+                preds2 = community_predicates.get(c2, set())
+                
+                if not preds1 or not preds2: continue
+                
+                intersection = len(preds1.intersection(preds2))
+                union = len(preds1.union(preds2))
+                jaccard = intersection / union if union > 0 else 0
+                
+                # Math Jaccard Merger Execution
+                if jaccard >= 0.75:
+                    logger.info(f"Isomorphic Symmetry Detected: Merging Community {c2} into {c1} (Overlap: {jaccard:.2f})")
+                    for node, group in merged_partition.items():
+                        if group == c2:
+                            merged_partition[node] = c1
+                            
+        # Structural Type-Casting (In/Out Degree Geometry)
+        for node in G.nodes():
+            in_deg = G.in_degree(node)
+            out_deg = G.out_degree(node)
+            
+            if in_deg == 0 and out_deg > 0:
+                class_role = "RootEntity"
+            elif in_deg > 0 and out_deg > 0:
+                class_role = "NestedEntity"
+            else:
+                class_role = "TerminalAttribute"
+                
+            G.nodes[node]['group'] = merged_partition.get(node, 'Unclustered')
+            G.nodes[node]['class_role'] = class_role
             
         return G
 

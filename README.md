@@ -1,53 +1,64 @@
-# IsoKernel: Semantic Knowledge Engineering Architecture
+# IsoKernel: Deterministic Semantic Knowledge Synthesis (V2)
 
-IsoKernel is a high-performance, completely offline-capable pipeline that transforms raw unstructured text into fully structured, strictly defined Knowledge Graphs. 
+IsoKernel is a high-performance, offline-capable code-generation pipeline that transforms completely unstructured raw text directly into deeply nested, strictly typed Pydantic Domain Logic Python classes.
 
-It accomplishes this by dynamically bridging unconstrained LLM Natural Language Processing (Phase 1) with localized high-dimensional physics embeddings (Phase 2), strictly verified semantic logic filtering (Phase 3), and complex graph topology interactions (Phase 4).
+Rather than relying entirely on LLM Hallucinations to map knowledge boundaries, IsoKernel dynamically bridges asynchronous semantic extraction with pure high-dimensional vector geometry, graph-theory physics, and explicit topological thresholds to literally *calculate* knowledge boundaries locally.
 
-## ⚠️ Crucial Terminology: Disentangling "Clusters"
-Throughout this pipeline, you will see data undergo two entirely independent grouping processes. It is absolutely critical to understand the mathematical difference between them:
+## The Core Pipeline Execution Sequence
 
-1. **Geometric Clusters (NLP Vectors):** This occurs during the Semantic Compression phase. It evaluates words as literal coordinates in math space strictly based on their dictionary definition (e.g., placing "Python" near "Java"). It has absolutely zero concept of edges, relationships, or what the words are connected to in your graph.
-2. **Topological Communities (Graph Clusters):** This occurs at the very end of the pipeline during `community_detection` (Louvain). This evaluates pure network density and physics (nodes linked together by active relationship edges). It explicitly maps "Communities" based purely on how entities physically interact with each other in the graph, completely ignoring what their dictionary definition means!
+The architecture structurally forces operations through 4 completely isolated, modular mathematical steps.
 
 ---
 
-## The Core Pipeline Execution
+### Phase 1: Foundational Extract & Dictionary Propagation
+*The transition of unstructured semantic noise into uniform, contextual data dictionaries.*
 
-### Phase 1: Unconstrained LLM Triplet Extraction (Discovery Phase)
-The Orchestrator reads raw text and injects it into a generalized LLM (Local Ollama, Vertex, or OpenAI). The Instructional prompt forces the LLM to extract every single explicitly stated relationship identically as a Triple (Subject -> Predicate -> Object). 
-It generates wildly messy permutations structurally limited only by the text (e.g. `Google`, `Google Inc.`, and `The Google Corporation`).
+*   **Step 1.1: Overlapping Window Chunking**  
+    * *What:* Massive uncompressed text files are chunked into precise mathematical overlaps (e.g., 4000-word blocks sliding backwards by 50-words each iteration).
+    * *Why:* Local LLMs have artificial token output limits. Feeding them 15 pages in one burst causes silent data truncation. Recursive overlaps guarantee every single sentence is structurally mined cleanly without severing contextual bounds dynamically!
+*   **Step 1.2: Dynamic Theme Discovery**  
+    * *What:* The engine dynamically outputs full Pydantic definitions (Title, Description, and the actual Logical Rationale for the Theme).
+    * *Why:* Prevents forced hardcoding (e.g., arbitrarily stopping at "5 Themes"). 
+*   **Step 1.3: Recursive Master Synthesis & Deduplication**  
+    * *What:* The entire corpus dataset is merged together, and the system deduplicates overlapping definitions into a uniform Master Ontology string.
+    * *Why:* By passing full description arrays to the Triple Extractor LLM, it actively reads exactly *why* a Master Theme exists, massively dropping Hallucinated routing in the raw relationship arrays!
 
-### Phase 2: NLP Semantic Compression (Geometric Clustering)
-The raw triplets are intercepted and passed into the `SentenceTransformer` HuggingFace engine. 
+---
 
-#### The Mathematics:
-- **Vectorization**: Every single extracted string is mapped onto a 384-dimensional mathematical matrix coordinate.
-- **Spectral Dimensionality Destruction (`use_spectral_decomposition`)**: If enabled, the pipeline natively calculates the **Principal Eigenvectors** (PCA) of the embeddings, violently shattering the Linguistic Fluff tensors down to a strict, core-essence geometry (e.g. 12 dense dimensions). This dramatically isolates fundamental mathematical "truth" from AI noise parameters.
-- **Deduplication Geometry (`compression_mode`)**: 
-  - If set to `"isolated"`, Nouns (Subjects/Objects) and Verbs (Predicates) are physically firewalled. Verbs only mathematically group with Verbs.
-  - If `"unified"`, they are dumped into one massive dimensional space globally.
-- **`AgglomerativeClustering`**: `scikit-learn` natively traverses the tensors and calculates the **Cosine Distance** between every single coordinate. If the vectors structurally sit closer together than your `similarity_threshold` (e.g. `0.8`), they are merged mathematically into a **Geometric Cluster**.
+### Phase 2: Topological Compression
+*The execution of algebraic geometry intercepting semantic models to mathematically shatter noise without LLM usage.*
 
-### Phase 3: Taxonomic Hypernym Resolution
-Once the mathematical boundaries of a Geometric Cluster are established (e.g., grouping `['Python', 'Java', 'Rust']`), the system must decide on a single uniform label (the Hypernym) to structurally represent the entire group inside your final graph.
+*   **Step 2.1: Localized Transformer Encodings (Jina)**  
+    * *What:* Utilizes `jinaai/jina-embeddings-v2-small-en` dynamically cached running entirely on local CPU/GPU hardware.
+    * *Why:* Extremely optimized 8k processing window structurally preventing any of your proprietary data arrays from leaving your network infrastructure securely natively.
+*   **Step 2.2: Spectral Vector Decomposition**  
+    * *What:* PCA eigenvalues violently shatter localized vector mappings around high-density terms mathematically!
+*   **Step 2.3: Structural Context Verification**  
+    * *What:* Mathematics occasionally groups antonyms (e.g., "Good" and "Bad" have high cosine similarity because they appear in identical grammatical structures). An LLM intercept acts as a semantic guardrail, unconditionally vetoing false positive math overlaps!
 
-**Resolution Algorithms (`hypernym_resolution`):**
-1. **`semantic_centroid` (Default)**: 
-   - **Math**: Traverses the actual localized tensors belonging strictly to the cluster members. It leverages `numpy.mean(..., axis=0)` to physically calculate an invisible mean vector (the exact dead-center "Centroid" of the scatter plot).
-   - **Proximity**: Maps the Cosine Similarity of every literal string inside the cluster against the invisible Centroid to declare the closest actual string as the anchor term.
-   - **Taxonomic Lifting**: Boots up a secondary LLM pipeline explicitly requesting a categorical classification of that Centroid term. It strictly forces a deductive `Is-A` boolean pass sequentially across all array members. If verified, the cluster adopts the Formal concept natively. If verification logically fails, it falls safely back to the unmodified geometry Centroid.
-2. **`most_frequent`**: Defaults to the literal text string that statically occurred the highest number of times in the source extraction.
-3. **`shortest_string`**: Exclusively selects the literal string computationally with the shortest length.
+---
 
-*At the conclusion of Phase 3, explicit "Before & After" CSV logic logs (`nlp_triplet_transformations.csv`) are automatically printed detailing pristine trace mappings covering every NLP adjustment made.*
+### Phase 3: Graph Physics (Topological Mapping)
+*Determining relationships strictly based on Network math, entirely ignoring English semantics.*
 
-### Phase 4: Graph Topology Analysis
-The completely filtered and standardized logic arrays natively deploy into `networkx`. Because all strings are cleanly unified, overlapping subjects logically fuse together into massive structural Super Nodes!
+*   **Step 3.1: Semantic Entropy Splitter**  
+    * *What:* Computes `$Weight = \log(\text{Total}/\text{Freq})$` natively across Edge matrices securely.
+    * *Why:* Generic text nodes (e.g., "He," "The Thing," or blank IDs) naturally flood graphs with noise. Entropy splitters drastically down-weight generic anomalies and heavily computationally attract structurally rare specific relationship identifiers, organically cracking massive datasets into hyper-distinct communities.
+*   **Step 3.2: Structural Jaccard Merging**  
+    * *What:* Analyzes distinct Louvain community sub-graphs and enforces rigid mathematical intersections ($>75\%$ overlap logic) successfully.
+    * *Why:* Sometimes 3 disconnected communities represent the exact identical data object with different masked names (e.g., User A, Account 1_X). Jaccard intersection strictly merges identical topological behaviors mathematically perfectly!
 
-- **Community Physics**: The algorithm loops mathematics sequentially across the network to aggressively evaluate the literal density of physical relationship edges between nodes compared against the wider graph.
-  - `"louvain"` or `"leiden"`: Maximizes loop modularity (hunting for circular relationship edge-chains). 
-  - **`"spectral"`**: Explicitly extracts the **Normalized Laplacian Matrix** natively from your network. It tracks the raw Eigenvalues generated and utilizes a programmatic **Eigengap Heuristic Array** to perfectly deduce the mathematical optimal number of total distinct communities hidden in the nodes! It then relies on `scikit-learn` to forcefully shatter the graph along those boundaries.
-- Dense logic interactions are isolated dynamically into explicitly numbered **Topological Communities**. 
+---
 
-The final shape natively prints visually to an interactive HTML canvas, color-coded directly to its Topology physics!
+### Phase 4: Pydantic Code Synthesis (Schema Generation)
+*Transforming physical node typologies dynamically back into production Python domain classes accurately!*
+
+*   **Step 4.1: Structural Type-Casting (In/Out-Degree Physics)**  
+    * *What:* The system calculates literal Directed Graph In/Out Degree parameters mapping logically per node precisely securely correctly!
+    * *Why:* Rather than asking an AI to guess variable types...
+        * A Node with `High Out-Degree / Low In-Degree` is mathematically proven to be a **Root Class** (`Subject`).
+        * A Node with `High In-Degree / High Out-Degree` is a **Nested Sub-Class** (`List[Subject]`).
+        * A Node with `Zero Out-Degree` is a purely terminal value (**Enum Terminal Attribute**).
+*   **Step 4.2: Present-Tense Relational Verb Anchoring**  
+    * *What:* The dictionary key names mapped into the `schemas.py` output natively explicitly mirror exactly the active predicate-verb detected in the graph topology accurately (e.g., `writes_books`, `has_attributes`).
+    * *Why:* The final deterministic `.py` output flawlessly constructs Nested Object-Oriented payloads reflecting reality seamlessly mapping perfectly dynamically purely!

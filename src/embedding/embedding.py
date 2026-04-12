@@ -6,14 +6,15 @@ logger = setup_logger("embedding_service")
 
 class EmbeddingService:
     def __init__(self, 
-                 embedding_model: str = "all-MiniLM-L6-v2",
+                 embedding_model: str = "jinaai/jina-embeddings-v2-small-en",
                  clustering_method: str = "agglomerative",
                  similarity_threshold: float = 0.8,
                  compression_mode: str = "unified",
                  compress_fields: List[str] = None,
                  hypernym_resolution: str = "semantic_centroid",
                  use_spectral_decomposition: bool = True,
-                 spectral_components: int = 12):
+                 spectral_components: int = 12,
+                 max_concurrent_llm_calls: int = 3):
         import os
         
         # Check if localized model exists in lib/models/
@@ -28,6 +29,7 @@ class EmbeddingService:
         self.clustering_method = clustering_method
         self.similarity_threshold = similarity_threshold
         self.compression_mode = compression_mode
+        self.max_concurrent_llm_calls = max_concurrent_llm_calls
         self.compress_fields = compress_fields if compress_fields is not None else ["subject", "object"]
         self.hypernym_resolution = hypernym_resolution
         self.use_spectral_decomposition = use_spectral_decomposition
@@ -75,28 +77,51 @@ class EmbeddingService:
             raise ValueError("Embedder not initialized.")
         return self.embedder.encode(texts)
 
-    def _cluster_and_map(self, nodes_list: List[str], triples: List[Dict[str, str]], target_fields: List[str]) -> Tuple[Dict[str, str], Dict[str, Dict[str, Any]]]:
+    def calculate_embeddings(self, nodes_list: List[str]):
         if not nodes_list:
-            return {}, {}
-            
-        logger.info(f"Computing embeddings for {len(nodes_list)} unique nodes in fields: {target_fields}")
-        embeddings = self.encode(nodes_list)
-        
+            return None
+        logger.info(f"Computing embeddings for {len(nodes_list)} unique nodes...")
+        return self.encode(nodes_list)
+
+    def apply_spectral_decomposition(self, node_counts: Dict[str, int], embeddings):
         if self.use_spectral_decomposition:
             from sklearn.decomposition import PCA
+            import numpy as np
+            
+            nodes_list = list(node_counts.keys())
             
             # Secure bounds handling. We mathematically cannot run PCA for more components than the total dimension or nodes list length.
             n_comp = min(self.spectral_components, len(nodes_list), embeddings.shape[1])
             if n_comp > 1:
-                logger.info(f"Applying Spectral Vector Geometry (PCA) compressing 384-dimensions down to top {n_comp} invariant principal eigenvectors...")
+                logger.info(f"Applying Frequency-Weighted Spectral Geometry (PCA) anchored around high-density terms...")
+                
+                # Apply Topological Gravity via Weighted PCA
+                weights = np.array([node_counts[node] for node in nodes_list], dtype=np.float64)
+                
+                # 1. Compute weighted center of gravity
+                weighted_mean = np.average(embeddings, axis=0, weights=weights)
+                
+                # 2. Center the hyper-vectors
+                embeddings_centered = embeddings - weighted_mean
+                
+                # 3. Apply radial density mass (sqrt of frequency weights)
+                embeddings_weighted = embeddings_centered * np.sqrt(weights[:, np.newaxis])
+                
+                # 4. Extract dominant structural eigenvectors pulled directly toward native dense clusters
                 pca = PCA(n_components=n_comp)
-                embeddings = pca.fit_transform(embeddings)
+                pca.fit(embeddings_weighted)
+                
+                # 5. Project all pure centered coordinates identically against the warped dimensions!
+                embeddings = pca.transform(embeddings_centered)
+                
+                logger.info(f"Successfully collapsed 384-dimensions down to top {n_comp} dynamically-warped principal eigenvectors.")
+                
             else:
                 logger.info("Node density too low to deploy Spectral decomposition bounds algebraically. Skipping mathematics.")
         
-        node_mapping = {}
-        cluster_logs = {}
-        
+        return embeddings
+
+    def cluster_embeddings(self, nodes_list: List[str], embeddings) -> Dict[str, List[str]]:
         if self.clustering_method == "agglomerative":
             from sklearn.cluster import AgglomerativeClustering
             import numpy as np
@@ -111,89 +136,89 @@ class EmbeddingService:
             )
             labels = clusterer.fit_predict(embeddings)
             
-            # Track frequencies for hypernym resolution tiebreaking
-            counts = {}
-            for t in triples:
-                for f in target_fields:
-                    if f in t:
-                        val = t[f]
-                        counts[val] = counts.get(val, 0) + 1
-            
             clusters = {}
             for node, label in zip(nodes_list, labels):
-                if label not in clusters:
-                    clusters[label] = []
-                clusters[label].append(node)
+                l_str = str(label)
+                if l_str not in clusters:
+                    clusters[l_str] = []
+                clusters[l_str].append(node)
+            return clusters
+        else:
+            logger.warning(f"Clustering method {self.clustering_method} not implemented fully.")
+            return {"0": nodes_list}
+
+    def resolve_hypernyms(self, clusters: Dict[str, List[str]], nodes_list: List[str], embeddings, triples: List[Dict[str, str]], target_fields: List[str]) -> Tuple[Dict[str, str], Dict[str, Dict[str, Any]]]:
+        node_mapping = {}
+        cluster_logs = {}
+        
+        # Track frequencies for hypernym resolution tiebreaking
+        counts = {}
+        for t in triples:
+            for f in target_fields:
+                if f in t:
+                    val = t[f]
+                    counts[val] = counts.get(val, 0) + 1
+
+        if self.hypernym_resolution == "semantic_centroid":
+            from sklearn.metrics.pairwise import cosine_similarity
+            import numpy as np
+            
+            # Math arrays prep
+            node_idx_map = {node: idx for idx, node in enumerate(nodes_list)}
+            centroid_clusters = {}
+            
+            # Calculate absolute internal tensors
+            for label, members in clusters.items():
+                member_idx = [node_idx_map[m] for m in members]
+                cluster_emb = embeddings[member_idx]
+                centroid_vec = np.mean(cluster_emb, axis=0).reshape(1, -1)
                 
-            if self.hypernym_resolution == "semantic_centroid":
-                from sklearn.metrics.pairwise import cosine_similarity
+                similarities = cosine_similarity(centroid_vec, cluster_emb)[0]
+                closest_idx = np.argmax(similarities)
+                centroid_member = members[closest_idx]
                 
-                # Math arrays prep
-                node_idx_map = {node: idx for idx, node in enumerate(nodes_list)}
-                centroid_clusters = {}
+                centroid_clusters[label] = {
+                    "centroid": centroid_member,
+                    "members": members
+                }
                 
-                # Calculate absolute internal tensors
-                for label, members in clusters.items():
-                    member_idx = [node_idx_map[m] for m in members]
-                    cluster_emb = embeddings[member_idx]
-                    centroid_vec = np.mean(cluster_emb, axis=0).reshape(1, -1)
+            if self.sync_client:
+                import json
+                from src.embedding.prompts import EmbeddingPrompts
+                from src.core.models import TaxonomicLiftingResult
+                
+                logger.info(f"Submitting {len(centroid_clusters)} isolated centroids for Taxonomic Lifting deductive logic...")
+                try:
+                    response = self.sync_client.chat.completions.create(
+                        model=self.llm_model,
+                        messages=[
+                            {"role": "system", "content": EmbeddingPrompts.TAXONOMIC_LIFTING_SYSTEM},
+                            {"role": "user", "content": EmbeddingPrompts.get_taxonomic_user(json.dumps(centroid_clusters, indent=2))}
+                        ],
+                        response_model=TaxonomicLiftingResult
+
+                    )
                     
-                    similarities = cosine_similarity(centroid_vec, cluster_emb)[0]
-                    closest_idx = np.argmax(similarities)
-                    centroid_member = members[closest_idx]
-                    
-                    centroid_clusters[label] = {
-                        "centroid": centroid_member,
-                        "members": members
-                    }
-                    
-                if self.sync_client:
-                    import json
-                    from src.extraction.prompts import Prompts
-                    from src.core.models import TaxonomicLiftingResult
-                    
-                    logger.info(f"Submitting {len(centroid_clusters)} isolated centroids for Taxonomic Lifting deductive logic...")
-                    try:
-                        response = self.sync_client.chat.completions.create(
-                            model=self.llm_model,
-                            messages=[
-                                {"role": "system", "content": Prompts.TAXONOMIC_LIFTING_SYSTEM},
-                                {"role": "user", "content": Prompts.get_taxonomic_user(json.dumps(centroid_clusters, indent=2))}
-                            ],
-                            response_model=TaxonomicLiftingResult
-                        )
-                        
-                        resolution_map = {}
-                        for res in response.resolutions:
-                            if res.members_verified:
-                                resolution_map[res.cluster_id] = res.formal_hypernym
-                                logger.info(f"Taxonomic Lift Verified [{res.cluster_id}]: {res.centroid} -> {res.formal_hypernym}")
-                            else:
-                                resolution_map[res.cluster_id] = res.centroid
-                                logger.warning(f"Taxonomic Lift Rejected [Is-A failed!]: {res.centroid} -> Reverting instantly to raw geometric centroid.")
-                                
-                        for label, members in clusters.items():
-                            cluster_id_str = f"c_{label}"
-                            mapped_val = resolution_map.get(str(label), centroid_clusters[label]["centroid"])
-                            for member in members:
-                                node_mapping[member] = mapped_val
-                                cluster_logs[member] = {
-                                    "nlp_cluster_id": cluster_id_str,
-                                    "final_hypernym": mapped_val
-                                }
-                    except Exception as e:
-                        logger.error(f"Taxonomic Engine failed natively: {e}. Executing unconditional mathematical Centroid mapping globally.")
-                        for label, members in clusters.items():
-                            cluster_id_str = f"c_{label}"
-                            mapped_val = centroid_clusters[label]["centroid"]
-                            for member in members:
-                                node_mapping[member] = mapped_val
-                                cluster_logs[member] = {
-                                    "nlp_cluster_id": cluster_id_str,
-                                    "final_hypernym": mapped_val
-                                }
-                else:
-                    logger.info("Executing isolated local Semantic Centroid mapping across clustering geometries...")
+                    resolution_map = {}
+                    for res in response.resolutions:
+                        if res.members_verified:
+                            resolution_map[str(res.cluster_id)] = res.formal_hypernym
+                            logger.info(f"Taxonomic Lift Verified [{res.cluster_id}]: {res.centroid} -> {res.formal_hypernym}")
+                        else:
+                            resolution_map[str(res.cluster_id)] = res.centroid
+                            logger.warning(f"Taxonomic Lift Rejected [Is-A failed!]: {res.centroid} -> Reverting instantly to raw geometric centroid.")
+                            
+                    for label, members in clusters.items():
+                        cluster_id_str = f"c_{label}"
+                        mapped_val = resolution_map.get(str(label), centroid_clusters[label]["centroid"])
+                        for member in members:
+                            node_mapping[member] = mapped_val
+                            cluster_logs[member] = {
+                                "nlp_cluster_id": cluster_id_str,
+                                "final_hypernym": mapped_val
+                            }
+                except Exception as e:
+                    logger.error(f"Taxonomic Engine failed natively: {e}. Executing unconditional mathematical Centroid mapping globally.")
                     for label, members in clusters.items():
                         cluster_id_str = f"c_{label}"
                         mapped_val = centroid_clusters[label]["centroid"]
@@ -203,57 +228,52 @@ class EmbeddingService:
                                 "nlp_cluster_id": cluster_id_str,
                                 "final_hypernym": mapped_val
                             }
-                            
-            elif self.hypernym_resolution == "llm_resolution" and self.sync_client:
-                import json
-                from src.extraction.prompts import Prompts
-                from src.core.models import LLMHypernymResolutionResult
-                
-                logger.info(f"Sending {len(clusters)} clusters to LLM for semantic hypernym resolution...")
-                
-                cluster_map = {str(k): v for k, v in clusters.items()}
-                
-                try:
-                    response = self.sync_client.chat.completions.create(
-                        model=self.llm_model,
-                        messages=[
-                            {"role": "system", "content": Prompts.HYPERNYM_SYSTEM},
-                            {"role": "user", "content": Prompts.get_hypernym_user(json.dumps(cluster_map, indent=2))}
-                        ],
-                        response_model=LLMHypernymResolutionResult
-                    )
-                    
-                    resolution_map = {res.cluster_id: res.hypernym for res in response.resolutions}
-                    
-                    for label, members in clusters.items():
-                        cluster_id_str = f"c_{label}"
-                        mapped_val = resolution_map.get(str(label), sorted(members, key=lambda x: -counts.get(x, 0))[0]) # tiebreaker
-                        for member in members:
-                            node_mapping[member] = mapped_val
-                            cluster_logs[member] = {
-                                "nlp_cluster_id": cluster_id_str,
-                                "final_hypernym": mapped_val
-                            }
-                            
-                except Exception as e:
-                    logger.error(f"LLM Resolution failed: {e}. Falling back to most_frequent.")
-                    for label, members in clusters.items():
-                        cluster_id_str = f"c_{label}"
-                        representative = sorted(members, key=lambda x: (-counts.get(x, 0), len(x)))[0]
-                        for member in members:
-                            node_mapping[member] = representative
-                            cluster_logs[member] = {
-                                "nlp_cluster_id": cluster_id_str,
-                                "final_hypernym": representative
-                            }
             else:
+                logger.info("Executing isolated local Semantic Centroid mapping across clustering geometries...")
                 for label, members in clusters.items():
                     cluster_id_str = f"c_{label}"
-                    if self.hypernym_resolution == "most_frequent":
-                        representative = sorted(members, key=lambda x: (-counts.get(x, 0), len(x)))[0]
-                    else: 
-                        representative = sorted(members, key=len)[0]
+                    mapped_val = centroid_clusters[label]["centroid"]
+                    for member in members:
+                        node_mapping[member] = mapped_val
+                        cluster_logs[member] = {
+                            "nlp_cluster_id": cluster_id_str,
+                            "final_hypernym": mapped_val
+                        }
                         
+        elif self.hypernym_resolution == "llm_resolution" and self.sync_client:
+            import json
+            from src.embedding.prompts import EmbeddingPrompts
+            from src.core.models import LLMHypernymResolutionResult
+            
+            logger.info(f"Sending {len(clusters)} clusters to LLM for semantic hypernym resolution...")
+            
+            try:
+                response = self.sync_client.chat.completions.create(
+                    model=self.llm_model,
+                    messages=[
+                        {"role": "system", "content": EmbeddingPrompts.HYPERNYM_SYSTEM},
+                        {"role": "user", "content": EmbeddingPrompts.get_hypernym_user(json.dumps(clusters, indent=2))}
+                    ],
+                    response_model=LLMHypernymResolutionResult
+                )
+                
+                resolution_map = {str(res.cluster_id): res.hypernym for res in response.resolutions}
+                
+                for label, members in clusters.items():
+                    cluster_id_str = f"c_{label}"
+                    mapped_val = resolution_map.get(str(label), sorted(members, key=lambda x: -counts.get(x, 0))[0]) # tiebreaker
+                    for member in members:
+                        node_mapping[member] = mapped_val
+                        cluster_logs[member] = {
+                            "nlp_cluster_id": cluster_id_str,
+                            "final_hypernym": mapped_val
+                        }
+                        
+            except Exception as e:
+                logger.error(f"LLM Resolution failed: {e}. Falling back to most_frequent.")
+                for label, members in clusters.items():
+                    cluster_id_str = f"c_{label}"
+                    representative = sorted(members, key=lambda x: (-counts.get(x, 0), len(x)))[0]
                     for member in members:
                         node_mapping[member] = representative
                         cluster_logs[member] = {
@@ -261,8 +281,107 @@ class EmbeddingService:
                             "final_hypernym": representative
                         }
         else:
-            logger.warning(f"Clustering method {self.clustering_method} not implemented fully.")
+            for label, members in clusters.items():
+                cluster_id_str = f"c_{label}"
+                if self.hypernym_resolution == "most_frequent":
+                    representative = sorted(members, key=lambda x: (-counts.get(x, 0), len(x)))[0]
+                else: 
+                    representative = sorted(members, key=len)[0]
+                    
+                for member in members:
+                    node_mapping[member] = representative
+                    cluster_logs[member] = {
+                        "nlp_cluster_id": cluster_id_str,
+                        "final_hypernym": representative
+                    }
+                    
+        return node_mapping, cluster_logs
+
+    def verify_clusters(self, clusters: Dict[str, List[str]]) -> Dict[str, List[str]]:
+        """
+        Intercepts mathematical Agglomerative geometry proposals and verifies them contextually natively via Instructor async processing.
+        Splits rejected clusters aggressively back into protective singletons.
+        """
+        if not self.sync_client:
+            logger.info("No LLM client configured for cluster verification. Skipping contextual validation hook.")
+            return clusters
             
+        verified_clusters = {}
+        clusters_to_verify = {}
+        
+        # Protective Filter: Only verify groupings (Size > 1). Pass singletons immediately.
+        for label, members in clusters.items():
+            if len(members) <= 1:
+                verified_clusters[label] = members
+            else:
+                clusters_to_verify[label] = members
+                
+        if not clusters_to_verify:
+             return verified_clusters
+             
+        import os, instructor, json, asyncio
+        from openai import AsyncOpenAI
+        from src.embedding.prompts import EmbeddingPrompts
+        from src.core.models import ClusterContextualValidation
+        
+        logger.info(f"Submitting {len(clusters_to_verify)} mathematical spatial clusters for Contextual Verification...")
+        
+        async def _run_validations():
+            max_concurrent = self.max_concurrent_llm_calls
+            sem = asyncio.Semaphore(max_concurrent)
+            
+            client = AsyncOpenAI(base_url=os.getenv("LLM_BASE_URL"), api_key="ollama")
+            async_client = instructor.from_openai(client, mode=instructor.Mode.JSON)
+            
+            async def _check_single(c_id, members):
+                async with sem:
+                    payload = json.dumps({"cluster_id": c_id, "proposed_members": members})
+                    try:
+                        res = await async_client.chat.completions.create(
+                            model=os.getenv("LLM_MODEL_NAME", "gpt-4o"),
+                            messages=[
+                                {"role": "system", "content": EmbeddingPrompts.CONTEXTUAL_VALIDATION_SYSTEM},
+                                {"role": "user", "content": EmbeddingPrompts.get_validation_user(payload)}
+                            ],
+                            response_model=ClusterContextualValidation
+                        )
+                        return c_id, members, res.accuracy_destroyed, res.reasoning
+                    except Exception as e:
+                        logger.warning(f"Contextual validation locally failed for cluster {c_id}: {e}. Defaulting to split to preserve accuracy.")
+                        return c_id, members, True, str(e)
+                        
+            tasks = [_check_single(c_id, members) for c_id, members in clusters_to_verify.items()]
+            return await asyncio.gather(*tasks)
+
+        loop = asyncio.get_event_loop()
+        results = loop.run_until_complete(_run_validations())
+        
+        split_counter = 99000  # Offset to strictly prevent overlapping singleton ID collisions
+        for c_id, members, accuracy_destroyed, reasoning in results:
+            if accuracy_destroyed:
+                logger.warning(f"Mathematical cluster '{c_id}' structurally rejected natively [Destroyed Context!]: Splitting {len(members)} entries back into singletons. Reason: {reasoning}")
+                for ind_member in members:
+                    verified_clusters[str(split_counter)] = [ind_member]
+                    split_counter += 1
+            else:
+                verified_clusters[c_id] = members
+
+        return verified_clusters
+
+    def _cluster_and_map(self, node_counts: Dict[str, int], triples: List[Dict[str, str]], target_fields: List[str]) -> Tuple[Dict[str, str], Dict[str, Dict[str, Any]]]:
+        if not node_counts:
+            return {}, {}
+            
+        nodes_list = list(node_counts.keys())
+            
+        embeddings = self.calculate_embeddings(nodes_list)
+        embeddings = self.apply_spectral_decomposition(node_counts, embeddings)
+        clusters = self.cluster_embeddings(nodes_list, embeddings)
+        
+        # Step 2.5 Contextual Constraint Validation execution
+        clusters = self.verify_clusters(clusters)
+        
+        node_mapping, cluster_logs = self.resolve_hypernyms(clusters, nodes_list, embeddings, triples, target_fields)
         return node_mapping, cluster_logs
 
     def semantic_compression(self, triples: List[Dict[str, str]]) -> Tuple[List[Dict[str, str]], List[Dict[str, str]]]:
@@ -281,13 +400,14 @@ class EmbeddingService:
         all_logs = []
         
         if self.compression_mode == "unified":
-            unique_nodes = set()
+            node_counts = {}
             for t in triples:
                 for f in self.compress_fields:
                     if f in t:
-                        unique_nodes.add(t[f])
+                        val = t[f]
+                        node_counts[val] = node_counts.get(val, 0) + 1
             
-            global_node_mapping, global_logs = self._cluster_and_map(list(unique_nodes), triples, self.compress_fields)
+            global_node_mapping, global_logs = self._cluster_and_map(node_counts, triples, self.compress_fields)
             
             # format logs
             for orig, data in global_logs.items():
@@ -299,12 +419,13 @@ class EmbeddingService:
                 })
         else:
             for field in self.compress_fields:
-                unique_nodes = set()
+                node_counts = {}
                 for t in triples:
                     if field in t:
-                        unique_nodes.add(t[field])
+                        val = t[field]
+                        node_counts[val] = node_counts.get(val, 0) + 1
                 
-                f_mapping, f_logs = self._cluster_and_map(list(unique_nodes), triples, [field])
+                f_mapping, f_logs = self._cluster_and_map(node_counts, triples, [field])
                 field_node_mappings[field] = f_mapping
                 
                 # format logs

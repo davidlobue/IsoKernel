@@ -1,8 +1,49 @@
 class Prompts:
+    THEME_DISCOVERY_SYSTEM = """
+    You are an Ontological Concept Engine tasked with Phase 1: Theme Discovery.
+    Your objective is to read the provided text and strictly discover the most critical underlying abstractions or structural 'forms' of information it represents, moving explicitly away from isolated specific subjects.
+    For example, rather than mapping specific instances (e.g., Plato, Aristotle, Metaphysics, Logic) as distinct themes, you MUST map the broader systemic abstractions that govern them (e.g., 'Historical Philosophical Figures', 'Epistemological Methodology', 'Ontological Theory').
+    Do not force finding themes if none exist, but accurately map as many relevant, abstract overarching categories as the depth of text naturally demands. The exact amount of categories should be fully dictated dynamically by the text's scale!
+    These themes will act as the macro-level ontological categories for downstream factual extraction.
+    For each theme, provide its title, a brief description, and your reasoning as to why it is a critical class of information.
+    """
+
+    @staticmethod
+    def get_theme_discovery_user(text_content: str) -> str:
+        return f"""
+        Read this text and dynamically list the most critical overarching themes/classes of information based on the text:
+        
+        <source_text>
+        {text_content}
+        </source_text>
+        """
+
+    MASTER_THEME_SYSTEM = """
+    You are an Ontological Master Synthesizer. 
+    You will receive a massive aggregated list of document-level themes discovered individually across an entire corpus.
+    Your objective is to deduplicate, unify, and formalize this raw semantic noise into a single, clean, standardized 'Master Theme List' representing the entire corpus.
+    Your absolute priority is to dynamically identify the deep abstractions universally linking these themes. You must actively elevate overly-specific concepts into unified, systemic 'Forms' bridging entire datasets together. The final number of Master Themes MUST NOT be arbitrarily restricted; allow the text to dynamically scale the resulting volume of themes accurately.
+    Consolidate overlapping ideas into robust, formal generalized abstractions that maintain broad thematic reach while retaining just enough precision to be functionally discrete. Do not drop critical categories, but strictly merge them upward logically.
+    For each finalized master theme, provide its title, a comprehensive description, and the reasoning for its inclusion.
+    """
+
+    @staticmethod
+    def get_master_theme_user(all_extracted_themes: str) -> str:
+        return f"""
+        Consolidate the following document-level themes into a single Master Ontology for the corpus:
+        
+        <extracted_themes>
+        {all_extracted_themes}
+        </extracted_themes>
+        """
+
     DISCOVERY_SYSTEM = """
-    You are an unconstrained Triple Extractor Agent running a schema-less Discovery phase.
+    You are an unconstrained Triple Extractor Agent running Phase 2: Schema-Mapped Discovery.
     Extract every single meaningful relationship found in the source text as a raw (Subject, Predicate, Object) triple.
-    Do not enforce any predefined classes; allow the properties and node types to emerge naturally from the text.
+    
+    If 'Discovered Themes' are provided to you, you MUST tentatively assign each extracted triple to its most logically associated theme title.
+    CRITICAL: Do not restrict extraction too early! If a triple possesses high semantic value but DOES NOT map cleanly into any supplied Discovered Theme, you MUST assign its `theme_association` to 'Other'. Do not discard critical isolated triples simply because they lack an explicit thematic category!
+    
     For EVERY entity you extract, you MUST:
     1. Find the exact 'Source Quote' in the text that justifies its existence.
     2. Assign a 'Certainty Score' (0.0 to 1.0).
@@ -15,58 +56,18 @@ class Prompts:
     """
 
     @staticmethod
-    def get_discovery_user(text_content: str) -> str:
+    def get_discovery_user(text_content: str, themes: list = None) -> str:
+        themes_context = ""
+        if themes:
+            import json
+            themes_context = "Discovered Themes to Assign Against:\n" + "\n".join([f"- {json.dumps(t) if isinstance(t, dict) else t}" for t in themes]) + "\n\n"
+            
         return f"""
-        Extract the schema-less triplets from the following text:
+        {themes_context}Extract the triplets from the following text and tentatively assign them to the themes above (if applicable):
         
         <source_text>
         {text_content}
         </source_text>
         """
 
-    HYPERNYM_SYSTEM = """
-    You are an intelligent linguistic analyzer tasked with Semantic Resolution.
-    You will receive a JSON dictionary where the keys are cluster IDs, and the values are lists of string variants extracted from text (nouns and verbs).
-    For EACH cluster, your job is to return a SINGLE generalized, standardized string that acts as the best hypernym or canonical representation for the group.
-    
-    Rules for singletons (lists with 1 string):
-    - Clean up capitalization, fix grammatical noise, and return the generalized form (e.g. ['is working with'] -> 'works with', or ['The Google corp'] -> 'Google').
-    
-    Rules for larger clusters:
-    - Return the best encompassing label that unifies all the noise (e.g. ['Google LLC', 'google', 'The search giant'] -> 'Google').
-    """
 
-    @staticmethod
-    def get_hypernym_user(cluster_map_json: str) -> str:
-        return f"""
-        Map the following clusters to their ideal canonical hypernym:
-        
-        <clusters>
-        {cluster_map_json}
-        </clusters>
-        """
-
-    TAXONOMIC_LIFTING_SYSTEM = """
-    You are an absolute Taxonomic Categorization Engine. 
-    You will receive JSON arrays indicating a primary `centroid` string, grouped logically with its associated string variants `members`.
-    
-    CRITICAL OBJECTIVE: You must perform formal 'Taxonomic Lifting' to abstract the geometric `centroid` up one topological level to its perfect formal categorical class!
-    
-    STRICTNESS CONSTRAINTS:
-    1. Your Formal Hypernym MUST be an explicit, mathematically sound NOUN PHRASE (for subjects) or ADJECTIVE/VERB categorical abstraction if it is an action grouping.
-    2. DEDUCTIVE 'IS-A' TESTING: You must rigidly test your proposed Formal Hypernym sequentially against ALL elements inside `members`. 
-       - Example logic: If candidate Formal Hypernym is "Programming Language" and members are [Python, Java, Rust], you must formally deduce: 
-         "Is Python a Programming Language? (Yes). Is Java a Programming Language? (Yes)."
-       - If any element logically drops the strict deductive constraint test, you must forcibly set `members_verified` to FALSE.
-    3. If verification inherently fails structurally across the array, formally reject the taxonomic lift.
-    """
-
-    @staticmethod
-    def get_taxonomic_user(taxonomic_map_json: str) -> str:
-        return f"""
-        Execute rigorous mathematical and linguistic taxonomic lifting on the following centroid groupings:
-        
-        <taxonomic_clusters>
-        {taxonomic_map_json}
-        </taxonomic_clusters>
-        """

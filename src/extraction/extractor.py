@@ -5,7 +5,7 @@ from openai import AsyncOpenAI
 from dotenv import load_dotenv, find_dotenv
 
 from src.core.logger import setup_logger
-from src.core.models import DocumentSource, RawTriple, TripleExtractionResult
+from src.core.models import DocumentSource, RawTriple, TripleExtractionResult, ThemeDiscoveryResult
 from src.extraction.prompts import Prompts
 
 # Load environment variables (finds .env recursively starting from cwd)
@@ -46,15 +46,45 @@ class TripleExtractor:
             
         logger.info(f"Initialized TripleExtractor for domain '{self.domain}' using model '{self.model_name}' via '{self.provider}'")
 
-    async def extract_raw_triples(self, document: DocumentSource) -> TripleExtractionResult:
+    async def extract_themes(self, document: DocumentSource) -> ThemeDiscoveryResult:
         """
-        Uses Instructor to extract raw, unconstrained semantic Triples.
+        Uses Instructor to execute 'Pass A': Discovering macro-themes.
+        """
+        response = await self.async_client.chat.completions.create(
+            model=self.model_name,
+            messages=[
+                {"role": "system", "content": Prompts.THEME_DISCOVERY_SYSTEM},
+                {"role": "user", "content": Prompts.get_theme_discovery_user(document.text_content)}
+            ],
+            response_model=ThemeDiscoveryResult
+        )
+        return response
+
+    async def consolidate_themes(self, all_themes: list) -> ThemeDiscoveryResult:
+        """
+        Uses Instructor to execute 'Pass A.5': Consolidating macro-themes into a master list.
+        """
+        import json
+        formatted_themes = json.dumps(all_themes, indent=2)
+        response = await self.async_client.chat.completions.create(
+            model=self.model_name,
+            messages=[
+                {"role": "system", "content": Prompts.MASTER_THEME_SYSTEM},
+                {"role": "user", "content": Prompts.get_master_theme_user(formatted_themes)}
+            ],
+            response_model=ThemeDiscoveryResult
+        )
+        return response
+
+    async def extract_raw_triples(self, document: DocumentSource, themes: list = None) -> TripleExtractionResult:
+        """
+        Uses Instructor to execute 'Pass B': Extracting raw semantic Triples and routing them to themes.
         """
         response = await self.async_client.chat.completions.create(
             model=self.model_name,
             messages=[
                 {"role": "system", "content": Prompts.DISCOVERY_SYSTEM},
-                {"role": "user", "content": Prompts.get_discovery_user(document.text_content)}
+                {"role": "user", "content": Prompts.get_discovery_user(document.text_content, themes)}
             ],
             response_model=TripleExtractionResult
         )

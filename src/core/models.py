@@ -1,14 +1,23 @@
 from typing import List
 from pydantic import BaseModel, Field, field_validator
 
+class Theme(BaseModel):
+    title: str = Field(description="The short, overarching title of the theme or categorical class.")
+    description: str = Field(description="A brief description of what this theme encompasses.")
+    importance_reasoning: str = Field(description="Why this theme is one of the most critical classes of information in the text.")
+
+class ThemeDiscoveryResult(BaseModel):
+    themes: List[Theme] = Field(description="The most critical overarching themes/classes of information discovered in the text. The exact number of themes is dictated dynamically by the text's core logic.")
+
 class RawTriple(BaseModel):
     subject: str = Field(description="The source entity node.")
     predicate: str = Field(description="The relationship or action linking Subject to Object.")
     object: str = Field(description="The target entity node or literal value.")
+    theme_association: str = Field(default="", description="The specific overarching Theme title this relationship falls under, if any.")
     quote: str = Field(description="The exact source quote from the text that justifies this relationship.")
     certainty_score: float = Field(description="The certainty score between 0.0 and 1.0.", ge=0.0, le=1.0)
 
-    @field_validator('subject', 'predicate', 'object', 'quote', mode='before')
+    @field_validator('subject', 'predicate', 'object', 'theme_association', 'quote', mode='before')
     def _coerce_null(cls, v):
         return "" if v is None else str(v)
         
@@ -40,3 +49,12 @@ class TaxonomicVerification(BaseModel):
 
 class TaxonomicLiftingResult(BaseModel):
     resolutions: List[TaxonomicVerification] = Field(description="List of structurally verified taxonomic classifications mapped natively to their parent group.")
+
+class ClusterContextualValidation(BaseModel):
+    cluster_id: str = Field(description="The internal ID of the cluster being formally validated.")
+    accuracy_destroyed: bool = Field(description="True if merging these mathematical entities mechanically destroys critical distinguishing accuracy in the context of the corpus. False if they are contextually safe to merge.")
+    reasoning: str = Field(description="A single sentence explaining strictly why merging these exact subjects mathematically either destroys or preserves critical accuracy down the line.")
+
+class GeneratedSchema(BaseModel):
+    class_name: str = Field(description="The formal Python class name structurally aligning to the graph community hypernym.")
+    python_code: str = Field(description="The 100% syntactically valid raw Python 3 execution code text mapping the Enum fields natively securely out across Pydantic inheritance bounds.")
