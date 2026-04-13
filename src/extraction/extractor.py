@@ -5,7 +5,7 @@ from openai import AsyncOpenAI
 from dotenv import load_dotenv, find_dotenv
 
 from src.core.logger import setup_logger
-from src.core.models import DocumentSource, RawTriple, TripleExtractionResult, ThemeDiscoveryResult
+from src.core.models import DocumentSource, RawTriple, TripleExtractionResult, ThemeDiscoveryResult, MasterThemeSynthesisResult
 from src.extraction.prompts import Prompts
 
 # Load environment variables (finds .env recursively starting from cwd)
@@ -72,7 +72,7 @@ class TripleExtractor:
         )
         return response
 
-    async def consolidate_themes(self, all_themes: list) -> ThemeDiscoveryResult:
+    async def consolidate_themes(self, all_themes: list) -> MasterThemeSynthesisResult:
         """
         Uses Instructor to execute 'Pass A.5': Consolidating macro-themes into a master list.
         """
@@ -84,7 +84,7 @@ class TripleExtractor:
                 {"role": "system", "content": Prompts.MASTER_THEME_SYSTEM},
                 {"role": "user", "content": Prompts.get_master_theme_user(formatted_themes)}
             ],
-            response_model=ThemeDiscoveryResult
+            response_model=MasterThemeSynthesisResult
         )
         return response
 

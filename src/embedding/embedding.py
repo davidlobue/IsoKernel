@@ -158,7 +158,7 @@ class EmbeddingService:
             logger.warning(f"Clustering method {self.clustering_method} not implemented fully.")
             return {"0": nodes_list}
 
-    def resolve_hypernyms(self, clusters: Dict[str, List[str]], nodes_list: List[str], embeddings, triples: List[Dict[str, str]], target_fields: List[str]) -> Tuple[Dict[str, str], Dict[str, Dict[str, Any]]]:
+    def resolve_hypernyms(self, clusters: Dict[str, List[str]], nodes_list: List[str], embeddings, triples: List[Dict[str, str]], target_fields: List[str], master_domain: str = None) -> Tuple[Dict[str, str], Dict[str, Dict[str, Any]]]:
         node_mapping = {}
         cluster_logs = {}
         
@@ -198,26 +198,39 @@ class EmbeddingService:
                 from src.embedding.prompts import EmbeddingPrompts
                 from src.core.models import TaxonomicLiftingResult
                 
+                payload_json_data = {}
+                centroid_to_label = {}
+                for label, data in centroid_clusters.items():
+                    c_member = data["centroid"]
+                    payload_json_data[c_member] = data["members"]
+                    centroid_to_label[c_member.lower()] = label
+                
                 logger.info(f"Submitting {len(centroid_clusters)} isolated centroids for Taxonomic Lifting deductive logic...")
                 try:
                     response = self.sync_client.chat.completions.create(
                         model=self.llm_model,
                         messages=[
                             {"role": "system", "content": EmbeddingPrompts.TAXONOMIC_LIFTING_SYSTEM},
-                            {"role": "user", "content": EmbeddingPrompts.get_taxonomic_user(json.dumps(centroid_clusters, indent=2))}
+                            {"role": "user", "content": EmbeddingPrompts.get_taxonomic_user(json.dumps(payload_json_data, indent=2), master_domain)}
                         ],
                         response_model=TaxonomicLiftingResult
-
                     )
                     
                     resolution_map = {}
                     for res in response.resolutions:
-                        if res.members_verified:
-                            resolution_map[str(res.cluster_id)] = res.formal_hypernym
-                            logger.info(f"Taxonomic Lift Verified [{res.cluster_id}]: {res.centroid} -> {res.formal_hypernym}")
+                        # Match native centroid string back against corresponding integer label safely 
+                        returned_key = str(res.cluster_id).lower()
+                        original_label = centroid_to_label.get(returned_key)
+                        
+                        if original_label is not None:
+                            if res.members_verified:
+                                resolution_map[str(original_label)] = res.formal_hypernym
+                                logger.info(f"Taxonomic Lift Verified [{res.cluster_id}]: {res.centroid} -> {res.formal_hypernym}")
+                            else:
+                                resolution_map[str(original_label)] = res.centroid
+                                logger.warning(f"Taxonomic Lift Rejected [Is-A failed!]: {res.centroid} -> Reverting instantly to raw geometric centroid.")
                         else:
-                            resolution_map[str(res.cluster_id)] = res.centroid
-                            logger.warning(f"Taxonomic Lift Rejected [Is-A failed!]: {res.centroid} -> Reverting instantly to raw geometric centroid.")
+                            logger.error(f"Taxonomic Lift returned untrackable key: '{res.cluster_id}'")
                             
                     for label, members in clusters.items():
                         cluster_id_str = f"c_{label}"
@@ -263,12 +276,12 @@ class EmbeddingService:
                     model=self.llm_model,
                     messages=[
                         {"role": "system", "content": EmbeddingPrompts.HYPERNYM_SYSTEM},
-                        {"role": "user", "content": EmbeddingPrompts.get_hypernym_user(json.dumps(clusters, indent=2))}
+                        {"role": "user", "content": EmbeddingPrompts.get_hypernym_user(json.dumps(clusters, indent=2), master_domain)}
                     ],
                     response_model=LLMHypernymResolutionResult
                 )
                 
-                resolution_map = {str(res.cluster_id): res.hypernym for res in response.resolutions}
+                resolution_map = {str(res.cluster_id): res.canonical_string for res in response.resolutions}
                 
                 for label, members in clusters.items():
                     cluster_id_str = f"c_{label}"
@@ -319,7 +332,90 @@ class EmbeddingService:
             
         return node_mapping, cluster_logs
 
-    def verify_clusters(self, clusters: Dict[str, List[str]]) -> Dict[str, List[str]]:
+
+    def preprocess_normalize_nodes(self, nodes_list: List[str], master_domain: str = None) -> Dict[str, str]:
+        if not nodes_list or not self.sync_client:
+            return {node: node for node in nodes_list}
+
+        import asyncio
+        import os
+        import json
+        import gc
+        import requests
+        from openai import AsyncOpenAI
+        import instructor
+        from src.embedding.prompts import EmbeddingPrompts
+        from src.core.models import LLMHypernymResolutionResult
+
+        logger.info(f"Submitting {len(nodes_list)} raw text nodes for Semantic Normalization Preprocessing...")
+        
+        # Batch nodes to prevent token overload
+        batch_size = 50
+        batches = [nodes_list[i:i + batch_size] for i in range(0, len(nodes_list), batch_size)]
+        
+        async def _run_normalization():
+            max_concurrent = self.max_concurrent_llm_calls
+            sem = asyncio.Semaphore(max_concurrent)
+            
+            client = AsyncOpenAI(base_url=os.getenv("LLM_BASE_URL"), api_key="ollama")
+            async_client = instructor.from_openai(client, mode=instructor.Mode.JSON)
+            
+            async def _process_batch(batch):
+                async with sem:
+                    # Treat each node as its own singleton cluster for the prompt
+                    cluster_payload = {f"n_{i}": [node] for i, node in enumerate(batch)}
+                    payload_json = json.dumps(cluster_payload, indent=2)
+                    
+                    try:
+                        res = await async_client.chat.completions.create(
+                            model=os.getenv("LLM_MODEL_NAME", "gpt-4o"),
+                            messages=[
+                                {"role": "system", "content": EmbeddingPrompts.HYPERNYM_SYSTEM},
+                                {"role": "user", "content": EmbeddingPrompts.get_hypernym_user(payload_json, master_domain)}
+                            ],
+                            response_model=LLMHypernymResolutionResult
+                        )
+                        
+                        # Map back n_i to original node text, and assign canonical output
+                        mapping = {}
+                        for resolution in res.resolutions:
+                            cid = resolution.cluster_id
+                            if cid in cluster_payload:
+                                original_text = cluster_payload[cid][0]
+                                mapping[original_text] = resolution.canonical_string
+                        return mapping
+                    except Exception as e:
+                        logger.warning(f"Normalization failed for batch: {e}. Passing nodes unaltered.")
+                        return {node: node for node in batch}
+
+            tasks = [_process_batch(batch) for batch in batches]
+            return await asyncio.gather(*tasks), tasks, async_client
+
+        loop = asyncio.get_event_loop()
+        results, tasks, async_client = loop.run_until_complete(_run_normalization())
+        
+        try:
+            del tasks
+            del async_client
+            gc.collect()
+            url = f"{os.getenv('LLM_BASE_URL', 'http://localhost:11434/v1').replace('/v1', '/api')}/generate"
+            requests.post(url, json={"model": os.getenv("LLM_MODEL_NAME", "gpt-4o"), "keep_alive": 0}, timeout=5.0)
+            logger.info("Cleared Ollama VRAM after Preprocessing Normalization.")
+        except Exception:
+            pass
+
+        final_mapping = {}
+        for r in results:
+            final_mapping.update(r)
+            
+        # Ensure mapping is complete mathematically (any dropped nodes fallback seamlessly)
+        for node in nodes_list:
+            if node not in final_mapping:
+                final_mapping[node] = node
+                
+        return final_mapping
+
+    def verify_clusters(self, clusters: Dict[str, List[str]], master_domain: str = None) -> Dict[str, List[str]]:
         """
         Intercepts mathematical Agglomerative geometry proposals and verifies them contextually natively via Instructor async processing.
         Splits rejected clusters aggressively back into protective singletons.
@@ -365,14 +461,14 @@ class EmbeddingService:
                             model=os.getenv("LLM_MODEL_NAME", "gpt-4o"),
                             messages=[
                                 {"role": "system", "content": EmbeddingPrompts.CONTEXTUAL_VALIDATION_SYSTEM},
-                                {"role": "user", "content": EmbeddingPrompts.get_validation_user(payload)}
+                                {"role": "user", "content": EmbeddingPrompts.get_validation_user(payload, master_domain)}
                             ],
                             response_model=ClusterContextualValidation
                         )
-                        return c_id, members, res.accuracy_destroyed, res.reasoning
+                        return c_id, members, res.accuracy_destroyed, res.reasoning, res.condition_detected
                     except Exception as e:
                         logger.warning(f"Contextual validation locally failed for cluster {c_id}: {e}. Defaulting to split to preserve accuracy.")
-                        return c_id, members, True, str(e)
+                        return c_id, members, True, str(e), "Exception Fallback"
                         
             tasks = [_check_single(c_id, members) for c_id, members in clusters_to_verify.items()]
             return await asyncio.gather(*tasks), tasks, async_client
@@ -397,9 +493,9 @@ class EmbeddingService:
         
         split_counter = 99000  # Offset to strictly prevent overlapping singleton ID collisions
         rejected_attempts = []
-        for c_id, members, accuracy_destroyed, reasoning in results:
+        for c_id, members, accuracy_destroyed, reasoning, condition_detected in results:
             if accuracy_destroyed:
-                logger.warning(f"Validation Engine intervened! Mathematically rejected contextual mapping for cluster '{c_id}'. Splitting {len(members)} entries back into singletons. Reason: {reasoning}")
+                logger.warning(f"Validation Engine intervened! Rejected contextual mapping for cluster '{c_id}' due to '{condition_detected}'. Splitting {len(members)} entries back into singletons. Reason: {reasoning}")
                 rejected_attempts.append({
                     "cluster_id": c_id,
                     "proposed_members": members,
@@ -426,7 +522,7 @@ class EmbeddingService:
 
         return verified_clusters
 
-    def _cluster_and_map(self, node_counts: Dict[str, int], triples: List[Dict[str, str]], target_fields: List[str]) -> Tuple[Dict[str, str], Dict[str, Dict[str, Any]]]:
+    def _cluster_and_map(self, node_counts: Dict[str, int], triples: List[Dict[str, str]], target_fields: List[str], master_domain: str = None) -> Tuple[Dict[str, str], Dict[str, Dict[str, Any]]]:
         if not node_counts:
             return {}, {}
             
@@ -437,12 +533,12 @@ class EmbeddingService:
         clusters = self.cluster_embeddings(nodes_list, embeddings)
         
         # Step 2.5 Contextual Constraint Validation execution
-        clusters = self.verify_clusters(clusters)
+        clusters = self.verify_clusters(clusters, master_domain)
         
-        node_mapping, cluster_logs = self.resolve_hypernyms(clusters, nodes_list, embeddings, triples, target_fields)
+        node_mapping, cluster_logs = self.resolve_hypernyms(clusters, nodes_list, embeddings, triples, target_fields, master_domain)
         return node_mapping, cluster_logs
 
-    def semantic_compression(self, triples: List[Dict[str, str]]) -> Tuple[List[Dict[str, str]], List[Dict[str, str]]]:
+    def semantic_compression(self, triples: List[Dict[str, str]], master_domain: str = None) -> Tuple[List[Dict[str, str]], List[Dict[str, str]]]:
         if not self.embedder:
             logger.warning("Embedder unavailable. Skipping compression.")
             return triples, []

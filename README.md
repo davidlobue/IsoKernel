@@ -39,8 +39,8 @@ The orchestrator fundamentally flows through four rigorously defined stages nati
 
 *   **Step 1.1: Document-Level Theme Discovery (LLM)**
     *   *Reason*: LLMs perform best when bounded. To avoid hallucinated concepts, we map the document space first.
-*   **Step 1.2: Master Ontology Consolidation (LLM)**
-    *   *Reason*: When scaling across thousands of documents, themes drift. This consolidates hundreds of themes explicitly down into a locked ontological taxonomy.
+*   **Step 1.2: Master Domain & Ontology Synthesis (LLM)**
+    *   *Reason*: When scaling across thousands of documents, themes drift. This explicitly forces the engine to deduce the singular overarching `master_domain` connecting the entire dataset logically, while consolidating hundreds of themes down into a locked ontological array.
 *   **Step 1.3: Schema-Bound Triplet Extraction (LLM)**
     *   *Reason*: Instructs the LLM to pull Triples native exclusively to the allowed definitions of the Master Ontology preventing noise extraction.
 
@@ -49,15 +49,17 @@ The orchestrator fundamentally flows through four rigorously defined stages nati
 
 *   **Step 2.1: Semantic Gravity Maps (Math)**
     *   *Reason*: Maps entities logically and captures their frequency density mathematically bridging text to topological components natively.
-*   **Step 2.2: Vector Encodings (Math)**
+*   **Step 2.2: Asynchronous Lexical Normalization (LLM)**
+    *   *Reason*: Foundational pre-processing block targeting string nodes natively filtering determiners, acronym noise, and grammatical case variances strictly logically BEFORE vectors calculate proximity.
+*   **Step 2.3: Vector Encodings (Math)**
     *   *Reason*: Embeds all unique strings via local models (e.g., `BAAI/bge-m3`) explicitly transforming textual data into computable multi-dimensional structures.
-*   **Step 2.3: Frequency-Weighted Spectral Decomposition [PCA] (Math)**
+*   **Step 2.4: Frequency-Weighted Spectral Decomposition [PCA] (Math)**
     *   *Reason*: Eliminates underlying variance in embeddings mapping logic completely into condensed principal eigenvectors, stripping away "noise" to lock clusters tight.
-*   **Step 2.4: Agglomerative Structural Proposals (Math)**
+*   **Step 2.5: Agglomerative Structural Proposals (Math)**
     *   *Reason*: Mathematically measures cosine similarities natively pairing shapes that belong natively to the identical sub-concepts explicitly aborting manually when the similarity threshold breaks natively.
-*   **Step 2.5: Contextual Intercept Guardrails (LLM/Math)**
+*   **Step 2.6: Contextual Intercept Guardrails (LLM/Math)**
     *   *Reason*: Math lacks nuanced context (e.g., 'Mild Severity' and 'Moderate Severity' look identical mathematically, but are different medically). This explicitly deploys Pydantic validations halting destructive logical merges natively splitting them back into singletons securely.
-*   **Step 2.6: Taxonomic Hypernym Validation (LLM/Math)**
+*   **Step 2.7: Taxonomic Hypernym Validation (LLM/Math)**
     *   *Reason*: Isolates geometric centroids for each verified mapping grouping and deductively establishes the absolute hypernym native translation mapping over them centrally.
 
 ### Phase 3: Graph Formation & Community Segregation

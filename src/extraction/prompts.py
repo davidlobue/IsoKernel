@@ -24,6 +24,9 @@ class Prompts:
     Your objective is to deduplicate, unify, and formalize this raw semantic noise into a single, clean, standardized 'Master Theme List' representing the entire corpus.
     Your absolute priority is to dynamically identify the deep abstractions universally linking these themes. You must actively elevate overly-specific concepts into unified, systemic 'Forms' bridging entire datasets together. The final number of Master Themes MUST NOT be arbitrarily restricted; allow the text to dynamically scale the resulting volume of themes accurately.
     Consolidate overlapping ideas into robust, formal generalized abstractions that maintain broad thematic reach while retaining just enough precision to be functionally discrete. Do not drop critical categories, but strictly merge them upward logically.
+    
+    CRITICAL: In addition to the list of formalized themes, you must step back and provide ONE single overarching `master_domain` string capturing the absolute overarching logic of the entire corpus seamlessly!
+    
     For each finalized master theme, provide its title, a comprehensive description, and the reasoning for its inclusion.
     """
 

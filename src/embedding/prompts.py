@@ -1,45 +1,58 @@
 class EmbeddingPrompts:
     HYPERNYM_SYSTEM = """
-    You are an intelligent linguistic analyzer tasked with Semantic Resolution.
-    You will receive a JSON dictionary where the keys are cluster IDs, and the values are lists of string variants extracted from text (nouns and verbs).
-    For EACH cluster, your job is to return a SINGLE generalized, standardized string that acts as the best hypernym or canonical representation for the group.
+    You are a Lexical Normalization Engine. Your goal is to transform raw NLP extracts into standardized, "atomized" strings to improve the accuracy of downstream vector embeddings.
     
-    Rules for singletons (lists with 1 string):
-    - Clean up capitalization, fix grammatical noise, and return the generalized form (e.g. ['is working with'] -> 'works with', or ['The Google corp'] -> 'Google').
+    ### CORE DIRECTIVES:
+    1. **Lemmatization & Case:** - Convert all nouns to Singular Title Case (e.g., 'Data Warehouses' -> 'Data Warehouse').
+       - Convert all verbs to Third-Person Singular Present (e.g., 'running' -> 'runs').
     
-    Rules for larger clusters:
-    - Return the best encompassing label that unifies all the noise (e.g. ['Google LLC', 'google', 'The search giant'] -> 'Google').
+    2. **Noise Stripping:** - Remove determiners (the, a, an).
+       - Remove corporate suffixes unless critical (e.g., 'Apple Inc.' -> 'Apple').
+       - Remove "soft" adjectives that don't change the core entity (e.g., 'Large Database' -> 'Database').
+    
+    3. **De-jargonizing:** - Expand common abbreviations ONLY if they are unambiguous in the provided context (e.g., 'K8s' -> 'Kubernetes').
+    
+    4. **Structural Predicates:** - Standardize relationship strings. Convert 'is a part of', 'part of', 'component in' all to 'part of'.
+    
+    ### DOMAIN GUARDRAILS:
+    If a term is a specific technical product or a unique named entity, do NOT over-simplify it. 
+    - Keep: 'PostgreSQL' (Do not simplify to 'Database').
+    - Simplify: 'PostgreSQL Server Instance' -> 'PostgreSQL'.
+
     """
 
     @staticmethod
-    def get_hypernym_user(cluster_map_json: str) -> str:
+    def get_hypernym_user(cluster_map_json: str, master_domain: str = None) -> str:
+        domain_context = f"CRITICAL CONTEXT / DOMAIN BOUNDARY: {master_domain}\n" if master_domain else ""
         return f"""
-        Map the following clusters to their ideal canonical hypernym:
-        
-        <clusters>
+        {domain_context}Normalize the following list of strings for a knowledge ontology:
         {cluster_map_json}
-        </clusters>
         """
 
     TAXONOMIC_LIFTING_SYSTEM = """
-    You are an absolute Taxonomic Categorization Engine. 
-    You will receive JSON arrays indicating a primary `centroid` string, grouped logically with its associated string variants `members`.
+    You are an Ontological Lexicographer specializing in strict hierarchical taxonomy.
+    You will receive a dictionary of geometrically clustered words anchored by a specific mathematical 'centroid'.
+    Your task is to deduce the formal, objective categorical "Hypernym" (parent class) that uniformly binds the centroid and all its members strictly logically.
+    Do NOT just pick the centroid; explicitly abstract UPWARD one taxonomic level conceptually safely! (e.g., if centroid is 'Toyota' and members are 'Honda', 'Toyota', the formal class is 'Car').
     
-    CRITICAL OBJECTIVE: You must perform formal 'Taxonomic Lifting' to abstract the geometric `centroid` up one topological level to its perfect formal categorical class!
+    CRITICAL CONSTRAINTS:
+    1. The `formal_hypernym` MUST be a real-world, abstract semantic noun or verb representing the entities exactly organically (e.g., 'Automobile', 'Software Framework', 'Symptom').
+    2. NEVER output mechanical or programmatic names. Absolutely DO NOT output "Group", "Agglomerative", "Cluster", or number/ID strings. If you extract "Agglomerative Group 2", you have intrinsically failed the system.
     
-    STRICTNESS CONSTRAINTS:
-    1. Your Formal Hypernym MUST be an explicit, mathematically sound NOUN PHRASE (for subjects) or ADJECTIVE/VERB categorical abstraction if it is an action grouping.
-    2. DEDUCTIVE 'IS-A' TESTING: You must rigidly test your proposed Formal Hypernym sequentially against ALL elements inside `members`. 
-       - Example logic: If candidate Formal Hypernym is "Programming Language" and members are [Python, Java, Rust], you must formally deduce: 
-         "Is Python a Programming Language? (Yes). Is Java a Programming Language? (Yes)."
-       - If any element logically drops the strict deductive constraint test, you must forcibly set `members_verified` to FALSE.
-    3. If verification inherently fails structurally across the array, formally reject the taxonomic lift.
+    If verification inherently fails structurally across the array, formally reject the taxonomic lift.
+    
+    STRICT DEDUCTIVE RULES:
+    1. **The 'Is-A' Test:** Every member in the cluster must be a strict subtype of your proposed Hypernym. 
+    2. **Domain Parity:** If the Master Theme is "Healthcare," 'Aspirin' lifts to 'Pharmacological Agent,' not 'Chemical Compound.'
+    3. **Verification:** If the members are too heterogeneous to share a specific hypernym, you must set `members_verified` to FALSE and return the Centroid as-is.
     """
 
     @staticmethod
-    def get_taxonomic_user(taxonomic_map_json: str) -> str:
+    def get_taxonomic_user(taxonomic_map_json: str, master_domain: str = None) -> str:
+        domain_context = f"CRITICAL CONTEXT / DOMAIN BOUNDARY: {master_domain}\n\n" if master_domain else ""
+            
         return f"""
-        Execute rigorous mathematical and linguistic taxonomic lifting on the following centroid groupings:
+        {domain_context}Execute rigorous linguistic taxonomic lifting on the following centroid groupings:
         
         <taxonomic_clusters>
         {taxonomic_map_json}
@@ -47,18 +60,30 @@ class EmbeddingPrompts:
         """
 
     CONTEXTUAL_VALIDATION_SYSTEM = """
-    You are an incredibly strict Semantic Context Verifier. 
-    You will receive an array of string entities that a mathematical clustering engine proposes grouping into a single unified semantic concept.
-    Your ONLY job is to determine: "Does merging these entities conceptually group them in a way that destroys critical distinguishing accuracy needed for our resulting schema?"
+    You are a Precision Evaluator for Knowledge Graph Integrity.
+    Determine if a proposed grouping results in "Lossy Semantic Compression."
     
-    If merging them technically works mathematically but functionally ruins contextual precision (e.g., merging ['Type 1 Diabetes', 'Diabetes']), you MUST set accuracy_destroyed = True.
-    If merging them preserves strict semantic equality seamlessly identically (e.g., merging ['patient', 'client', 'the patient']), you MUST set accuracy_destroyed = False.
+    CRITICAL FAILURE CONDITIONS (Set accuracy_destroyed = True):
+    1. **Hierarchy Mixing:** One term is a parent of another (e.g., ['Virus', 'COVID-19']). These must remain distinct.
+    2. **Functional Divergence:** Terms have similar embeddings but different impacts (e.g., ['Revenue', 'Profit']).
+    3. **Attribute Loss:** Merging a general term with a specific variant (e.g., ['User', 'Admin User']).
+    
+    VALID MERGE CONDITIONS (Set accuracy_destroyed = False):
+    1. **Lexical Variation:** (e.g., ['AI', 'Artificial Intelligence', 'A.I.']).
+    2. **Orthographic Noise:** (e.g., ['Github', 'GitHub', 'github.com']).
+    
+    OUTPUT RULES:
+    - You must output PURE JSON. Do NOT output a JSON Schema definition (i.e. do not use "properties", "type", etc.).
+    - You must output an exact matching dictionary object populated with your evaluated strings and booleans.
+    - `condition_detected` must be explicitly populated mapping to the exact rule tracked above (e.g. 'Lexical Variation' or 'Hierarchy Mixing').
+
     """
 
     @staticmethod
-    def get_validation_user(proposed_cluster_json: str) -> str:
+    def get_validation_user(proposed_cluster_json: str, master_domain: str = None) -> str:
+        domain_context = f"CRITICAL CONTEXT / DOMAIN BOUNDARY: {master_domain}\n\n" if master_domain else ""
         return f"""
-        Provide contextual validation determining if grouping the following math proposals destroys critical accuracy:
+        {domain_context}Provide contextual validation determining if grouping the following math proposals destroys critical meaning accuracy:
         
         <proposed_clusters>
         {proposed_cluster_json}

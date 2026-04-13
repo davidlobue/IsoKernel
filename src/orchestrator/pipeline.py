@@ -138,7 +138,7 @@ class PipelineOrchestrator:
             
         return final_doc_themes
 
-    def consolidate_themes(self, theme_maps: dict) -> list:
+    def consolidate_themes(self, theme_maps: dict) -> dict:
         ext_cfg = self.config.get("extraction", {})
         extractor = TripleExtractor(
             model=ext_cfg.get("model", None),
@@ -156,7 +156,10 @@ class PipelineOrchestrator:
         async def _run_consolidation():
             res = await extractor.consolidate_themes(all_flattened_topics)
             await extractor.close()
-            return [t.model_dump() for t in res.themes]
+            return {
+                "master_domain": res.master_domain,
+                "themes": [t.model_dump() for t in res.themes]
+            }
 
         loop = asyncio.get_event_loop()
         master_themes = loop.run_until_complete(_run_consolidation())
@@ -229,7 +232,19 @@ class PipelineOrchestrator:
             
         return final_triples
 
-    def refine_graph(self, triples: list):
+    def refine_graph(self, triples: list, master_domain: str = None):
+        # Sanitize all string variables globally natively stripping mathematical noise
+        sanitized_triples = []
+        for t in triples:
+            t_clean = {}
+            for k, v in t.items():
+                if isinstance(v, str):
+                    t_clean[k] = v.replace("_", " ").strip()
+                else:
+                    t_clean[k] = v
+            sanitized_triples.append(t_clean)
+        triples = sanitized_triples
+        
         processor = self._get_processor()
         graphs_dir = self.config.get("output", {}).get("graphs_dir", "outputs/graphs")
         schemas_dir = self.config.get("output", {}).get("schemas_dir", "outputs/schemas")
@@ -246,6 +261,12 @@ class PipelineOrchestrator:
         if embed_service and embed_service.compress_fields:
             logger.info("Executing Semantic Compression Flow...")
             node_counts = self.extract_unique_nodes(triples)
+            
+            logger.info("Running pre-process LLM Normalization natively on extracted raw string nodes...")
+            norm_mapping = embed_service.preprocess_normalize_nodes(list(node_counts.keys()), master_domain)
+            triples = self.apply_compression(triples, norm_mapping)
+            node_counts = self.extract_unique_nodes(triples)
+            
             embeddings = self.create_embeddings(node_counts)
             embeddings = self.apply_spectral_decomposition(node_counts, embeddings)
             
@@ -281,9 +302,9 @@ class PipelineOrchestrator:
             step_2_4_graph = processor._build_graph(step_2_4_triples)
             processor.save_visualization(step_2_4_graph, os.path.join(schemas_dir, "step_2_4_agglomerative_proposals.html"))
             
-            verified_clusters = self.verify_clusters(clusters)
+            verified_clusters = self.verify_clusters(clusters, master_domain)
             nodes_list = list(node_counts.keys())
-            node_mapping, cluster_logs = self.resolve_hypernyms(verified_clusters, nodes_list, embeddings, triples)
+            node_mapping, cluster_logs = self.resolve_hypernyms(verified_clusters, nodes_list, embeddings, triples, master_domain)
             
             compressed_triples = self.apply_compression(triples, node_mapping)
             
@@ -341,16 +362,16 @@ class PipelineOrchestrator:
         if not embed_service: return {}
         return embed_service.cluster_embeddings(list(node_counts.keys()), embeddings)
 
-    def verify_clusters(self, clusters: dict) -> dict:
+    def verify_clusters(self, clusters: dict, master_domain: str = None) -> dict:
         embed_service = self._get_embedding_service()
         if not embed_service: return clusters
-        return embed_service.verify_clusters(clusters)
+        return embed_service.verify_clusters(clusters, master_domain)
 
-    def resolve_hypernyms(self, clusters: dict, nodes_list: list, embeddings, triples: list) -> tuple:
+    def resolve_hypernyms(self, clusters: dict, nodes_list: list, embeddings, triples: list, master_domain: str = None) -> tuple:
         import pandas as pd
         embed_service = self._get_embedding_service()
         if not embed_service: return {}, {}
-        node_mapping, cluster_logs = embed_service.resolve_hypernyms(clusters, nodes_list, embeddings, triples, embed_service.compress_fields)
+        node_mapping, cluster_logs = embed_service.resolve_hypernyms(clusters, nodes_list, embeddings, triples, embed_service.compress_fields, master_domain)
         
         # Persist Checkpoint Log
         out_dir = self.config.get("output", {}).get("schemas_dir", "outputs/schemas")
@@ -497,7 +518,7 @@ class PipelineOrchestrator:
                 json.dump({"document_themes": discovered_themes_map, "master_ontology": master_themes_list}, f, indent=4)
                 
             logger.info("Starting Pass B: Triplet Extraction with Theme mapping...")
-            triples = self.extract_triples(documents_to_process, master_themes_list)
+            triples = self.extract_triples(documents_to_process, master_themes_list.get("themes", []))
             
             # Save Phase 1 output
             out_dir = self.config.get("output", {}).get("schemas_dir", "outputs/schemas")
@@ -533,7 +554,18 @@ class PipelineOrchestrator:
                 print("-> [STEP] PHASE 2: GRAPH PROCESSING & REFINEMENT")
                 print("==================================================")
                 
-            graph, output_html, schemas_out = self.refine_graph(triples)
+            # Attempt to inherently load cached master domain logic specifically to bind semantic validation structurally
+            loaded_master_domain = None
+            themes_path = os.path.join(self.config.get("output", {}).get("schemas_dir", "outputs/schemas"), "phase1_extracted_themes.json")
+            if os.path.exists(themes_path):
+                try:
+                    with open(themes_path, "r") as f:
+                        master_ontology = json.load(f).get("master_ontology", {})
+                        loaded_master_domain = master_ontology.get("master_domain")
+                except Exception:
+                    pass
+                    
+            graph, output_html, schemas_out = self.refine_graph(triples, master_domain=loaded_master_domain)
             
             logger.info(f"Phase 2 completed. Clusters exported to {schemas_out} and graph saved to {output_html}")
             if self.verbose:

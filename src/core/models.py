@@ -9,6 +9,10 @@ class Theme(BaseModel):
 class ThemeDiscoveryResult(BaseModel):
     themes: List[Theme] = Field(description="The most critical overarching themes/classes of information discovered in the text. The exact number of themes is dictated dynamically by the text's core logic.")
 
+class MasterThemeSynthesisResult(BaseModel):
+    master_domain: str = Field(description="The single overarching Domain title effectively capturing and encompassing the complete global knowledge structure represented securely globally.")
+    themes: List[Theme] = Field(description="The formal, standardized master list of specific categorical themes governing the corpus natively.")
+
 class RawTriple(BaseModel):
     subject: str = Field(description="The source entity node.")
     predicate: str = Field(description="The relationship or action linking Subject to Object.")
@@ -36,22 +40,27 @@ class DocumentSource(BaseModel):
     id: str = Field(description="Unique identifier for the document.")
     text_content: str = Field(description="Raw text content of the document.")
 
-class ClusterHypernym(BaseModel):
+class NormalizedClusterOutput(BaseModel):
     cluster_id: str = Field(description="The unique identifier for the mapped cluster.")
-    hypernym: str = Field(description="The standardized general semantic label that best represents the cluster variants.")
+    canonical_string: str = Field(description="The formal standardized semantic canonical string unifying all the cluster variants.")
+    reasoning: str = Field(description="Explicit grammatical and semantic justification for the normalization.")
+
+class LLMHypernymResolutionResult(BaseModel):
+    resolutions: List[NormalizedClusterOutput] = Field(description="List of structurally verified normalized canonical outputs.")
 
 class TaxonomicVerification(BaseModel):
     cluster_id: str = Field(description="The unique identifier for the mapped cluster.")
     centroid: str = Field(description="The anchor term mathematically centered inside the cluster matrix.")
-    formal_hypernym: str = Field(description="The formal categorical target the node logically belongs to.")
+    formal_hypernym: str = Field(description="The formal categorical target the node logically belongs to. MUST be a strict Noun Phrase or Adjective/Verb abstraction.")
     members_verified: bool = Field(description="True if ALL members structurally satisfy the strict Is-A categorical taxonomy mapping against the formal_hypernym, otherwise False.")
-    reasoning: str = Field(description="A single sentence deduction structurally validating the Is-A constraints across all members.")
+    reasoning: str = Field(description="A sequential deductive explanation formally validating the Is-A constraints across all members structurally. Also explicitly confirm it aligns with Master Themes if provided.")
 
 class TaxonomicLiftingResult(BaseModel):
     resolutions: List[TaxonomicVerification] = Field(description="List of structurally verified taxonomic classifications mapped natively to their parent group.")
 
 class ClusterContextualValidation(BaseModel):
     cluster_id: str = Field(description="The internal ID of the cluster being formally validated.")
+    condition_detected: str = Field(description="The explicit condition detected causing the rejection: e.g., 'Hierarchy Mixing', 'Functional Divergence', etc.")
     accuracy_destroyed: bool = Field(description="True if merging these mathematical entities mechanically destroys critical distinguishing accuracy in the context of the corpus. False if they are contextually safe to merge.")
     reasoning: str = Field(description="A single sentence explaining strictly why merging these exact subjects mathematically either destroys or preserves critical accuracy down the line.")
 
