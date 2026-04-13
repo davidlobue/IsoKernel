@@ -48,7 +48,7 @@ class Prompts:
     1. Find the exact 'Source Quote' in the text that justifies its existence.
     2. Assign a 'Certainty Score' (0.0 to 1.0).
     ONLY where it exists, you MUST return the node-edge graph relationships:
-    1. Identify the connectedness of the entity (For example, "a man walks his dog" = [MAN]-(walks)-[DOG])
+    1. Identify the core identity and connectedness of each entity (For example, "a young man walks his brown dog" = [man]-[walks]-[dog])
     2. Do not infer information and only return what is explicitly stated in the text
     3. An entity can have 0...N relationships from the text
             

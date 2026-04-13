@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 class SchemaSynthesizer:
     def __init__(self, config: dict):
         self.config = config
-        self.output_dir = self.config.get("output", {}).get("schemas_dir", "data/outputs/schemas_code")
+        self.output_dir = self.config.get("output", {}).get("schemas_dir", "outputs/schemas_code")
         os.makedirs(self.output_dir, exist_ok=True)
         
     def extract_communities(self, G: nx.DiGraph) -> dict:
@@ -119,12 +119,18 @@ class SchemaSynthesizer:
         valid_payloads = {}
         for comm_id, edges in communities.items():
             payload = self.package_payload(edges)
-            if payload and payload.get("predicates"):
+            if payload and (payload.get("root_classes") or payload.get("nested_classes")):
                 valid_payloads[comm_id] = payload
                 
         if not valid_payloads:
             logger.warning("No cohesive topographical communities detected for schema translation natively.")
             return []
+            
+        # Checkpoint: Save JSON mappings natively before transmitting to LLM
+        payloads_out = os.path.join(self.output_dir, "phase3_community_payloads.json")
+        with open(payloads_out, "w", encoding="utf-8") as f:
+            json.dump(valid_payloads, f, indent=4)
+        logger.info(f"Persisted Phase 3 Semantic Payloads strictly into {payloads_out}")
             
         async def _run_synthesis():
             max_concurrent = self.config.get("pipeline", {}).get("max_concurrent_llm_calls", 3)
@@ -143,6 +149,17 @@ class SchemaSynthesizer:
         loop = asyncio.get_event_loop()
         results = loop.run_until_complete(_run_synthesis())
         
+        try:
+            import urllib.request
+            url = f"{os.getenv('LLM_BASE_URL', 'http://localhost:11434/v1').replace('/v1', '/api')}/generate"
+            model_name = os.getenv("LLM_MODEL_NAME", "gpt-4o")
+            data = json.dumps({"model": model_name, "keep_alive": 0}).encode("utf-8")
+            req = urllib.request.Request(url, data=data, headers={'Content-Type': 'application/json'})
+            urllib.request.urlopen(req, timeout=2.0)
+            logger.info(f"Cleared Memory & Ollama VRAM after Schema Synthesis.")
+        except Exception:
+            pass
+            
         written_files = []
         master_file_path = os.path.join(self.output_dir, "schemas.py")
         

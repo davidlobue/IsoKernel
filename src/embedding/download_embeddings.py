@@ -1,5 +1,6 @@
 import os
 import sys
+import argparse
 
 def download_model(model_name="all-MiniLM-L6-v2"):
     print(f"Initializing download of {model_name}...")
@@ -18,4 +19,8 @@ def download_model(model_name="all-MiniLM-L6-v2"):
     print("Download and serialization complete.")
 
 if __name__ == "__main__":
-    download_model()
+    parser = argparse.ArgumentParser(description="Download embedding models for offline use.")
+    parser.add_argument("--model", type=str, default="all-MiniLM-L6-v2", help="The HuggingFace model name to download.")
+    args = parser.parse_args()
+    
+    download_model(args.model)

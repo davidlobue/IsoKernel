@@ -6,14 +6,14 @@ logger = setup_logger("embedding_service")
 
 class EmbeddingService:
     def __init__(self, 
-                 embedding_model: str = "jinaai/jina-embeddings-v2-small-en",
+                 embedding_model: str = "BAAI/bge-m3",
                  clustering_method: str = "agglomerative",
                  similarity_threshold: float = 0.8,
                  compression_mode: str = "unified",
                  compress_fields: List[str] = None,
                  hypernym_resolution: str = "semantic_centroid",
                  use_spectral_decomposition: bool = True,
-                 spectral_components: int = 12,
+                 spectral_variance_retention: float = 0.90,
                  max_concurrent_llm_calls: int = 3):
         import os
         
@@ -33,7 +33,7 @@ class EmbeddingService:
         self.compress_fields = compress_fields if compress_fields is not None else ["subject", "object"]
         self.hypernym_resolution = hypernym_resolution
         self.use_spectral_decomposition = use_spectral_decomposition
-        self.spectral_components = spectral_components
+        self.spectral_variance_retention = spectral_variance_retention
         
         self.embedder = None
         self.sync_client = None
@@ -90,9 +90,10 @@ class EmbeddingService:
             
             nodes_list = list(node_counts.keys())
             
-            # Secure bounds handling. We mathematically cannot run PCA for more components than the total dimension or nodes list length.
-            n_comp = min(self.spectral_components, len(nodes_list), embeddings.shape[1])
-            if n_comp > 1:
+            # Feature dimensions bounds
+            max_possible_components = min(len(nodes_list), embeddings.shape[1])
+            
+            if max_possible_components > 1:
                 logger.info(f"Applying Frequency-Weighted Spectral Geometry (PCA) anchored around high-density terms...")
                 
                 # Apply Topological Gravity via Weighted PCA
@@ -107,14 +108,24 @@ class EmbeddingService:
                 # 3. Apply radial density mass (sqrt of frequency weights)
                 embeddings_weighted = embeddings_centered * np.sqrt(weights[:, np.newaxis])
                 
-                # 4. Extract dominant structural eigenvectors pulled directly toward native dense clusters
-                pca = PCA(n_components=n_comp)
-                pca.fit(embeddings_weighted)
+                requested_variance = self.spectral_variance_retention
                 
-                # 5. Project all pure centered coordinates identically against the warped dimensions!
+                try:
+                    # Dynamically pick the n_components that explain the variance threshold
+                    pca = PCA(n_components=requested_variance, svd_solver='full')
+                    pca.fit(embeddings_weighted)
+                    n_comp_used = pca.n_components_
+                except Exception as e:
+                    logger.warning(f"Dynamic Variance PCA failed ({e}). Falling back to integer-bounded math.")
+                    n_comp_fallback = max(1, max_possible_components - 1)
+                    pca = PCA(n_components=n_comp_fallback)
+                    pca.fit(embeddings_weighted)
+                    n_comp_used = n_comp_fallback
+                
+                # Project all pure centered coordinates identically against the warped dimensions
                 embeddings = pca.transform(embeddings_centered)
                 
-                logger.info(f"Successfully collapsed 384-dimensions down to top {n_comp} dynamically-warped principal eigenvectors.")
+                logger.info(f"Successfully collapsed {embeddings_centered.shape[1]}-dimensions down to top {n_comp_used} dynamically-warped principal eigenvectors (Variance Target: {requested_variance}).")
                 
             else:
                 logger.info("Node density too low to deploy Spectral decomposition bounds algebraically. Skipping mathematics.")
@@ -294,7 +305,18 @@ class EmbeddingService:
                         "nlp_cluster_id": cluster_id_str,
                         "final_hypernym": representative
                     }
-                    
+        
+        try:
+            import json, urllib.request, os
+            url = f"{os.getenv('LLM_BASE_URL', 'http://localhost:11434/v1').replace('/v1', '/api')}/generate"
+            model_name = os.getenv("LLM_MODEL_NAME", "gpt-4o")
+            data = json.dumps({"model": model_name, "keep_alive": 0}).encode("utf-8")
+            req = urllib.request.Request(url, data=data, headers={'Content-Type': 'application/json'})
+            urllib.request.urlopen(req, timeout=2.0)
+            logger.info("Cleared Memory & Ollama VRAM after Taxonomic Consolidation.")
+        except Exception:
+            pass
+            
         return node_mapping, cluster_logs
 
     def verify_clusters(self, clusters: Dict[str, List[str]]) -> Dict[str, List[str]]:
@@ -320,6 +342,8 @@ class EmbeddingService:
              return verified_clusters
              
         import os, instructor, json, asyncio
+        import gc
+        import requests
         from openai import AsyncOpenAI
         from src.embedding.prompts import EmbeddingPrompts
         from src.core.models import ClusterContextualValidation
@@ -351,20 +375,54 @@ class EmbeddingService:
                         return c_id, members, True, str(e)
                         
             tasks = [_check_single(c_id, members) for c_id, members in clusters_to_verify.items()]
-            return await asyncio.gather(*tasks)
+            return await asyncio.gather(*tasks), tasks, async_client
 
         loop = asyncio.get_event_loop()
-        results = loop.run_until_complete(_run_validations())
+        results, tasks, async_client = loop.run_until_complete(_run_validations())
+        
+        # Free memory optimizations
+        try:
+            del tasks
+            del async_client
+        except Exception:
+            pass
+        gc.collect()
+        
+        try:
+            url = f"{os.getenv('LLM_BASE_URL', 'http://localhost:11434/v1').replace('/v1', '/api')}/generate"
+            requests.post(url, json={"model": os.getenv("LLM_MODEL_NAME", "gpt-4o"), "keep_alive": 0}, timeout=5.0)
+            logger.info("Cleared Ollama VRAM after Contextual Validation.")
+        except Exception:
+            pass
         
         split_counter = 99000  # Offset to strictly prevent overlapping singleton ID collisions
+        rejected_attempts = []
         for c_id, members, accuracy_destroyed, reasoning in results:
             if accuracy_destroyed:
-                logger.warning(f"Mathematical cluster '{c_id}' structurally rejected natively [Destroyed Context!]: Splitting {len(members)} entries back into singletons. Reason: {reasoning}")
+                logger.warning(f"Validation Engine intervened! Mathematically rejected contextual mapping for cluster '{c_id}'. Splitting {len(members)} entries back into singletons. Reason: {reasoning}")
+                rejected_attempts.append({
+                    "cluster_id": c_id,
+                    "proposed_members": members,
+                    "reasoning": reasoning
+                })
                 for ind_member in members:
                     verified_clusters[str(split_counter)] = [ind_member]
                     split_counter += 1
             else:
                 verified_clusters[c_id] = members
+
+        if rejected_attempts:
+            try:
+                out_dir = os.path.join("outputs", "schemas")
+                os.makedirs(out_dir, exist_ok=True)
+                rejected_file = os.path.join(out_dir, "rejected_clusters.json")
+                
+                with open(rejected_file, "w") as f:
+                    json.dump(rejected_attempts, f, indent=4)
+                    
+                logger.info(f"Saved {len(rejected_attempts)} rejected contextual mapping attempts to {rejected_file} for human review.")
+            except Exception as e:
+                logger.error(f"Failed to save rejected clusters log: {e}")
 
         return verified_clusters
 

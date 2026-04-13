@@ -241,6 +241,66 @@ class GraphProcessor:
             
         net.save_graph(output_file)
         
+    def save_scatter_visualization(self, embeddings, nodes_list, clusters, output_file: str):
+        """
+        Projects high-dimensional semantic embeddings into an interactive 2D Plotly scatter plot via t-SNE.
+        """
+        logger.info(f"Generating interactive t-SNE scatter plot to {output_file}")
+        import plotly.express as px
+        from sklearn.manifold import TSNE
+        import pandas as pd
+        import numpy as np
+        
+        os.makedirs(os.path.dirname(output_file), exist_ok=True)
+        
+        # Build node to cluster mapping
+        node_to_cluster = {}
+        for c_id, members in clusters.items():
+            for m in members:
+                node_to_cluster[m] = f"Cluster {c_id}"
+                
+        # Squashing via t-SNE. Ensure perplexity doesn't exceed n_samples - 1
+        n_samples = embeddings.shape[0]
+        perplexity = min(30, max(5, n_samples // 3)) if n_samples > 1 else 1
+        
+        if n_samples > 1:
+            tsne = TSNE(n_components=2, perplexity=perplexity, random_state=42, init='pca', learning_rate='auto')
+            embeddings_2d = tsne.fit_transform(embeddings)
+        else:
+            # Fallback if only 1 node somehow exists
+            embeddings_2d = np.array([[0.0, 0.0]])
+            
+        # Prepare DataFrame
+        df = pd.DataFrame({
+            "x": embeddings_2d[:, 0],
+            "y": embeddings_2d[:, 1],
+            "Entity": nodes_list,
+            "Community": [node_to_cluster.get(n, "Unclustered") for n in nodes_list]
+        })
+        
+        # Create ultra-premium Plotly graphic
+        fig = px.scatter(
+            df, x="x", y="y",
+            color="Community",
+            hover_name="Entity",
+            hover_data={"x": False, "y": False, "Community": True},
+            title="Semantic Agglomerative Proximity Map (t-SNE Projection)",
+            template="plotly_dark"
+        )
+        
+        fig.update_traces(marker=dict(size=10, opacity=0.8, line=dict(width=1, color='DarkSlateGrey')))
+        fig.update_layout(
+            plot_bgcolor='rgba(15, 17, 26, 1)',
+            paper_bgcolor='rgba(15, 17, 26, 1)',
+            font=dict(family="Inter, Roboto, sans-serif", color="#E2E8F0"),
+            title_font=dict(size=22),
+            showlegend=False,
+            xaxis=dict(showgrid=False, zeroline=False, visible=False),
+            yaxis=dict(showgrid=False, zeroline=False, visible=False)
+        )
+        
+        fig.write_html(output_file)
+
     def export_schemas(self, G: nx.DiGraph, output_file: str):
         """
         Exports the distinct logic clusters into a summarized tabular/JSON format 

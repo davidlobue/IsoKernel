@@ -24,10 +24,12 @@ class TripleExtractor:
         self.model_name = model or os.getenv("LLM_MODEL_NAME", "gpt-4o")
         self.base_url = os.getenv("LLM_BASE_URL", None)
 
+        self._raw_client = None
+        
         if self.provider == "local":
             logger.info("Configuring local LLM provider via AsyncOpenAI API schema...")
-            client = AsyncOpenAI(base_url=self.base_url, api_key="ollama")
-            self.async_client = instructor.from_openai(client, mode=instructor.Mode.JSON)
+            self._raw_client = AsyncOpenAI(base_url=self.base_url, api_key="ollama")
+            self.async_client = instructor.from_openai(self._raw_client, mode=instructor.Mode.JSON)
             
         elif self.provider == "google":
             logger.info("Configuring Google Vertex provider...")
@@ -42,9 +44,19 @@ class TripleExtractor:
                 
         else: # Default openAI
             logger.info("Configuring Async OpenAI provider...")
-            self.async_client = instructor.from_openai(AsyncOpenAI())
+            self._raw_client = AsyncOpenAI()
+            self.async_client = instructor.from_openai(self._raw_client)
             
         logger.info(f"Initialized TripleExtractor for domain '{self.domain}' using model '{self.model_name}' via '{self.provider}'")
+
+    async def close(self):
+        """Explicitly handles closing the underlying HTTP connection pools securely."""
+        if self._raw_client is not None:
+            try:
+                await self._raw_client.close()
+                logger.info("Explicitly closed LLM Async client connections.")
+            except Exception as e:
+                logger.warning(f"Failed to cleanly close LLM connections: {e}")
 
     async def extract_themes(self, document: DocumentSource) -> ThemeDiscoveryResult:
         """

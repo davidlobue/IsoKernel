@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Optional
 from pydantic import BaseModel, Field, field_validator
 
 class Theme(BaseModel):
@@ -13,11 +13,11 @@ class RawTriple(BaseModel):
     subject: str = Field(description="The source entity node.")
     predicate: str = Field(description="The relationship or action linking Subject to Object.")
     object: str = Field(description="The target entity node or literal value.")
-    theme_association: str = Field(default="", description="The specific overarching Theme title this relationship falls under, if any.")
+    theme_association: Optional[str] = Field(default=None, description="The specific overarching Theme title this relationship falls under, if any.")
     quote: str = Field(description="The exact source quote from the text that justifies this relationship.")
     certainty_score: float = Field(description="The certainty score between 0.0 and 1.0.", ge=0.0, le=1.0)
 
-    @field_validator('subject', 'predicate', 'object', 'theme_association', 'quote', mode='before')
+    @field_validator('subject', 'predicate', 'object', 'quote', mode='before')
     def _coerce_null(cls, v):
         return "" if v is None else str(v)
         

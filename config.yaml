@@ -4,18 +4,18 @@ pipeline:
   run_phase_1: true
   run_phase_2: true
   run_phase_4: true
-  max_concurrent_llm_calls: 4
+  max_concurrent_llm_calls: 3
   
 extraction:
   domain: "general knowledge"
   max_retries: 3
   theme_chunk_max_words: 4000
-  triple_chunk_max_words: 1000
+  triple_chunk_max_words: 3000
   
 refinement:
   # Semantic Embedding Parameters
   use_embeddings: true
-  embedding_model: "jinaai/jina-embeddings-v2-small-en"
+  embedding_model: "BAAI/bge-m3"
   clustering_method: "agglomerative"  # or "hdbscan"
   # similarity_threshold: Minimum cosine similarity measure required (0.0 to 1.0) to map two string variants together. Higher means stricter mapping.
   similarity_threshold: 0.8
@@ -32,7 +32,7 @@ refinement:
   # Spectral Vector Geometry
   # Aggressive mathematical tensor decomposition. Identifies the "Principal Eigenvectors" to actively drop linguistic noise from LLM embeddings prior to calculating Semantic Centroids.
   use_spectral_decomposition: true
-  spectral_components: 12 
+  spectral_variance_retention: 0.90 
   
   # hypernym_resolution: Mechanism for determining the definitive string label representation of a cluster group.
   # - "semantic_centroid": (Default) Calculates local mathematical vector centroids, then formally attempts Taxonomic Lifting via LLM to find the "Is-A" Concept.
@@ -45,7 +45,7 @@ refinement:
   community_detection: "louvain"  # Algorithms to assign community clusters (e.g., "louvain", "leiden", "spectral")
   
 output:
-  logs_dir: "data/outputs/logs"
-  themes_dir: "data/outputs/themes"
-  schemas_dir: "data/outputs/schemas"
-  graphs_dir: "data/outputs/graphs"
+  logs_dir: "logs"
+  themes_dir: "outputs/themes"
+  schemas_dir: "outputs/schemas"
+  graphs_dir: "outputs/graphs"

@@ -22,6 +22,21 @@ class PipelineOrchestrator:
         self.domain = domain
         self.verbose = verbose
 
+    def _clear_ollama_vram(self, phase_name: str):
+        import gc
+        import json
+        import urllib.request
+        gc.collect()
+        try:
+            url = f"{os.getenv('LLM_BASE_URL', 'http://localhost:11434/v1').replace('/v1', '/api')}/generate"
+            model_name = os.getenv("LLM_MODEL_NAME", "gpt-4o")
+            data = json.dumps({"model": model_name, "keep_alive": 0}).encode("utf-8")
+            req = urllib.request.Request(url, data=data, headers={'Content-Type': 'application/json'})
+            urllib.request.urlopen(req, timeout=2.0)
+            logger.info(f"Cleared Memory & Ollama VRAM after {phase_name}.")
+        except Exception:
+            pass
+
     def _load_config(self) -> dict:
         if not os.path.exists(self.config_path):
             logger.error(f"Config file not found: {self.config_path}")
@@ -95,6 +110,8 @@ class PipelineOrchestrator:
             tasks = [_extract_single(orig_id, vdoc, i * 0.5) for i, (orig_id, vdoc) in enumerate(virtual_chunks)]
             results = await asyncio.gather(*tasks)
             
+            await extractor.close()
+            
             # Collapse back down rigorously locally to exact files stably
             consolidated = {}
             for orig_id, themes in results:
@@ -112,8 +129,9 @@ class PipelineOrchestrator:
 
         loop = asyncio.get_event_loop()
         final_doc_themes = loop.run_until_complete(_extract_all_themes(documents_to_process))
+        self._clear_ollama_vram("Theme Extraction")
         
-        output_dir = self.config.get("output", {}).get("themes_dir", "data/outputs/themes")
+        output_dir = self.config.get("output", {}).get("themes_dir", "outputs/themes")
         os.makedirs(output_dir, exist_ok=True)
         with open(os.path.join(output_dir, "01_document_themes.json"), "w") as f:
             json.dump(final_doc_themes, f, indent=2)
@@ -137,12 +155,14 @@ class PipelineOrchestrator:
         
         async def _run_consolidation():
             res = await extractor.consolidate_themes(all_flattened_topics)
+            await extractor.close()
             return [t.model_dump() for t in res.themes]
 
         loop = asyncio.get_event_loop()
         master_themes = loop.run_until_complete(_run_consolidation())
+        self._clear_ollama_vram("Theme Consolidation")
         
-        output_dir = self.config.get("output", {}).get("themes_dir", "data/outputs/themes")
+        output_dir = self.config.get("output", {}).get("themes_dir", "outputs/themes")
         os.makedirs(output_dir, exist_ok=True)
         with open(os.path.join(output_dir, "02_master_themes.json"), "w") as f:
             json.dump(master_themes, f, indent=2)
@@ -189,6 +209,8 @@ class PipelineOrchestrator:
             tasks = [_extract_single(orig_id, vdoc, i * 0.5) for i, (orig_id, vdoc) in enumerate(virtual_chunks)]
             results = await asyncio.gather(*tasks)
             
+            await extractor.close()
+            
             all_triples = []
             for res in results:
                 all_triples.extend(res)
@@ -196,9 +218,10 @@ class PipelineOrchestrator:
 
         loop = asyncio.get_event_loop()
         final_triples = loop.run_until_complete(_extract_all(documents_to_process))
+        self._clear_ollama_vram("Triple Extraction")
         
         # Persist raw extractions log
-        out_dir = self.config.get("output", {}).get("schemas_dir", "data/outputs/schemas")
+        out_dir = self.config.get("output", {}).get("schemas_dir", "outputs/schemas")
         os.makedirs(out_dir, exist_ok=True)
         raw_output_path = os.path.join(out_dir, "phase1_raw_triples.json")
         with open(raw_output_path, "w") as f:
@@ -207,31 +230,65 @@ class PipelineOrchestrator:
         return final_triples
 
     def refine_graph(self, triples: list):
-        ref_cfg = self.config.get("refinement", {})
-        processor = GraphProcessor(
-            use_embeddings=ref_cfg.get("use_embeddings", True),
-            embedding_model=ref_cfg.get("embedding_model", "all-MiniLM-L6-v2"),
-            clustering_method=ref_cfg.get("clustering_method", "agglomerative"),
-            similarity_threshold=ref_cfg.get("similarity_threshold", 0.8),
-            community_detection=ref_cfg.get("community_detection", "louvain"),
-            compression_mode=ref_cfg.get("compression_mode", "unified"),
-            compress_fields=ref_cfg.get("compress_fields", ["subject", "object"]),
-            hypernym_resolution=ref_cfg.get("hypernym_resolution", "shortest_string"),
-            max_concurrent_llm_calls=self.config.get("pipeline", {}).get("max_concurrent_llm_calls", 3)
-        )
-        
-        graphs_dir = self.config.get("output", {}).get("graphs_dir", "data/outputs/graphs")
+        processor = self._get_processor()
+        graphs_dir = self.config.get("output", {}).get("graphs_dir", "outputs/graphs")
+        schemas_dir = self.config.get("output", {}).get("schemas_dir", "outputs/schemas")
         os.makedirs(graphs_dir, exist_ok=True)
-        graph = processor.process(triples, graphs_dir=graphs_dir)
+        os.makedirs(schemas_dir, exist_ok=True)
         
-        output_html = os.path.join(graphs_dir, "03_final_graph_with_communities.html")
-        processor.save_visualization(graph, output_html)
+        logger.info("Saving checkpoint: Graph visualization of raw text extracts...")
+        initial_graph = processor._build_graph(triples)
+        processor.save_visualization(initial_graph, os.path.join(graphs_dir, "01_raw_text_extracts.html"))
         
-        schemas_dir = self.config.get("output", {}).get("schemas_dir", "data/outputs/schemas")
-        schemas_out = os.path.join(schemas_dir, "phase2_refined_clusters.csv")
-        processor.export_schemas(graph, schemas_out)
+        compressed_triples = triples
+        embed_service = self._get_embedding_service()
         
-        return graph, output_html, schemas_out
+        if embed_service and embed_service.compress_fields:
+            logger.info("Executing Semantic Compression Flow...")
+            node_counts = self.extract_unique_nodes(triples)
+            embeddings = self.create_embeddings(node_counts)
+            embeddings = self.apply_spectral_decomposition(node_counts, embeddings)
+            
+            # Step 2.4 Agglomerative Structural Proposals
+            clusters = self.compute_clusters(node_counts, embeddings)
+            
+            # --- NEW: Visual Checkpoint for Semantic Proximity ---
+            logger.info("Saving checkpoint: Interactive t-SNE Semantic Proximity Map...")
+            nodes_list = list(node_counts.keys())
+            processor.save_scatter_visualization(embeddings, nodes_list, clusters, os.path.join(graphs_dir, "02_agglomerative_semantic_clusters.html"))
+            # ----------------------------------------------------
+            
+            logger.info("Saving checkpoint: Step 2.4 Agglomerative Structural Proposals (Clustering)...")
+            step_2_4_mapping = {}
+            for cid, members in clusters.items():
+                if len(members) > 0:
+                    sorted_members = sorted(members, key=lambda x: (len(x), x))
+                    label = f"Cluster_{cid} ({sorted_members[0]})"
+                    for m in members:
+                        step_2_4_mapping[m] = label
+                        
+            step_2_4_triples = []
+            fields = embed_service.compress_fields
+            for t in triples:
+                mapped_t = t.copy()
+                for key, val in t.items():
+                    mapped_t[key] = val
+                for f in fields:
+                    if f in mapped_t:
+                        mapped_t[f] = step_2_4_mapping.get(mapped_t[f], mapped_t[f])
+                step_2_4_triples.append(mapped_t)
+
+            step_2_4_graph = processor._build_graph(step_2_4_triples)
+            processor.save_visualization(step_2_4_graph, os.path.join(schemas_dir, "step_2_4_agglomerative_proposals.html"))
+            
+            verified_clusters = self.verify_clusters(clusters)
+            nodes_list = list(node_counts.keys())
+            node_mapping, cluster_logs = self.resolve_hypernyms(verified_clusters, nodes_list, embeddings, triples)
+            
+            compressed_triples = self.apply_compression(triples, node_mapping)
+            
+        G, output_html, schemas_out = self.build_and_detect_communities(compressed_triples)
+        return G, output_html, schemas_out
 
     def _get_processor(self) -> GraphProcessor:
         ref_cfg = self.config.get("refinement", {})
@@ -253,7 +310,7 @@ class PipelineOrchestrator:
             compress_fields=ref_cfg.get("compress_fields", ["subject", "object"]),
             hypernym_resolution=ref_cfg.get("hypernym_resolution", "shortest_string"),
             use_spectral_decomposition=ref_cfg.get("use_spectral_decomposition", True),
-            spectral_components=ref_cfg.get("spectral_components", 12),
+            spectral_variance_retention=ref_cfg.get("spectral_variance_retention", 0.90),
             max_concurrent_llm_calls=self.config.get("pipeline", {}).get("max_concurrent_llm_calls", 3)
         )
 
@@ -296,7 +353,7 @@ class PipelineOrchestrator:
         node_mapping, cluster_logs = embed_service.resolve_hypernyms(clusters, nodes_list, embeddings, triples, embed_service.compress_fields)
         
         # Persist Checkpoint Log
-        out_dir = self.config.get("output", {}).get("schemas_dir", "data/outputs/schemas")
+        out_dir = self.config.get("output", {}).get("schemas_dir", "outputs/schemas")
         os.makedirs(out_dir, exist_ok=True)
         if cluster_logs:
             df = pd.DataFrame(cluster_logs)
@@ -329,18 +386,18 @@ class PipelineOrchestrator:
             
         # Persist Long-Format Transform Matrix
         import pandas as pd
-        out_dir = self.config.get("output", {}).get("schemas_dir", "data/outputs/schemas")
+        out_dir = self.config.get("output", {}).get("schemas_dir", "outputs/schemas")
         os.makedirs(out_dir, exist_ok=True)
         if compressed_triples:
             df = pd.DataFrame(compressed_triples)
-            df.to_csv(os.path.join(out_dir, "nlp_triplet_transformations.csv"), index=False)
+            df.to_csv(os.path.join(out_dir, "Hypernym_triplet_transformations.csv"), index=False)
             
         return compressed_triples
 
     def build_and_detect_communities(self, compressed_triples: list):
         import networkx as nx
         processor = self._get_processor()
-        graphs_dir = self.config.get("output", {}).get("graphs_dir", "data/outputs/graphs")
+        graphs_dir = self.config.get("output", {}).get("graphs_dir", "outputs/graphs")
         os.makedirs(graphs_dir, exist_ok=True)
         
         logger.info("Building Core Directed Graph...")
@@ -384,7 +441,7 @@ class PipelineOrchestrator:
         output_html = os.path.join(graphs_dir, "03_final_graph_with_communities.html")
         processor.save_visualization(G, output_html)
         
-        schemas_dir = self.config.get("output", {}).get("schemas_dir", "data/outputs/schemas")
+        schemas_dir = self.config.get("output", {}).get("schemas_dir", "outputs/schemas")
         schemas_out = os.path.join(schemas_dir, "phase2_refined_clusters.csv")
         processor.export_schemas(G, schemas_out)
         
@@ -433,7 +490,7 @@ class PipelineOrchestrator:
             master_themes_list = self.consolidate_themes(discovered_themes_map)
             
             # Save thematic outputs dynamically for review
-            out_dir = self.config.get("output", {}).get("schemas_dir", "data/outputs/schemas")
+            out_dir = self.config.get("output", {}).get("schemas_dir", "outputs/schemas")
             os.makedirs(out_dir, exist_ok=True)
             themes_output_path = os.path.join(out_dir, "phase1_extracted_themes.json")
             with open(themes_output_path, "w") as f:
@@ -443,7 +500,7 @@ class PipelineOrchestrator:
             triples = self.extract_triples(documents_to_process, master_themes_list)
             
             # Save Phase 1 output
-            out_dir = self.config.get("output", {}).get("schemas_dir", "data/outputs/schemas")
+            out_dir = self.config.get("output", {}).get("schemas_dir", "outputs/schemas")
             os.makedirs(out_dir, exist_ok=True)
             raw_output_path = os.path.join(out_dir, "phase1_raw_triples.json")
             with open(raw_output_path, "w") as f:
@@ -453,7 +510,7 @@ class PipelineOrchestrator:
                 print(f"-> [SUMMARY] Phase 1 completed: {len(triples)} triples extracted and saved to {raw_output_path}\n")
 
         elif run_phase_2:
-            out_dir = self.config.get("output", {}).get("schemas_dir", "data/outputs/schemas")
+            out_dir = self.config.get("output", {}).get("schemas_dir", "outputs/schemas")
             raw_output_path = os.path.join(out_dir, "phase1_raw_triples.json")
             if os.path.exists(raw_output_path):
                 if self.verbose:

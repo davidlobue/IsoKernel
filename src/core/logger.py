@@ -2,7 +2,7 @@ import logging
 import os
 import datetime
 
-def setup_logger(name: str, log_dir: str = "data/outputs/logs") -> logging.Logger:
+def setup_logger(name: str, log_dir: str = "logs") -> logging.Logger:
     """Sets up a logger that separates phases into an appropriately named log file."""
     if not os.path.exists(log_dir):
         os.makedirs(log_dir)

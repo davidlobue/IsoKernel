@@ -1,8 +1,11 @@
 venv/
 __pycache__/
 .ipynb_checkpoints/
-data/outputs/
-data/inputs/
+.env
+outputs/
+logs/
+data/
 *.log
 *.csv
 *.html
+src/lib/models/

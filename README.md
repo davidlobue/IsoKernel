@@ -1,64 +1,79 @@
-# IsoKernel: Deterministic Semantic Knowledge Synthesis (V2)
+# IsoKernel Knowledge Engineering Pipeline
 
-IsoKernel is a high-performance, offline-capable code-generation pipeline that transforms completely unstructured raw text directly into deeply nested, strictly typed Pydantic Domain Logic Python classes.
+The IsoKernel orchestrator leverages a hybrid-neurosymbolic design. Unlike traditional pipelines that rely entirely on LLMs (which are prone to hallucination, semantic drift, and scaling limitations), IsoKernel mathematically controls and bounds AI behavior using geometric topologies, spectral physics, and native dimensional clustering algorithms.
 
-Rather than relying entirely on LLM Hallucinations to map knowledge boundaries, IsoKernel dynamically bridges asynchronous semantic extraction with pure high-dimensional vector geometry, graph-theory physics, and explicit topological thresholds to literally *calculate* knowledge boundaries locally.
-
-## The Core Pipeline Execution Sequence
-
-The architecture structurally forces operations through 4 completely isolated, modular mathematical steps.
+This architectural fusion guarantees that large-scale, unstructured textual data is reduced symmetrically into highly rigid, mathematically verified, and strictly-typed object-oriented structural schemas.
 
 ---
 
-### Phase 1: Foundational Extract & Dictionary Propagation
-*The transition of unstructured semantic noise into uniform, contextual data dictionaries.*
+## 1. Hybrid Engine Separation: LLMs vs. Mathematics
 
-*   **Step 1.1: Overlapping Window Chunking**  
-    * *What:* Massive uncompressed text files are chunked into precise mathematical overlaps (e.g., 4000-word blocks sliding backwards by 50-words each iteration).
-    * *Why:* Local LLMs have artificial token output limits. Feeding them 15 pages in one burst causes silent data truncation. Recursive overlaps guarantee every single sentence is structurally mined cleanly without severing contextual bounds dynamically!
-*   **Step 1.2: Dynamic Theme Discovery**  
-    * *What:* The engine dynamically outputs full Pydantic definitions (Title, Description, and the actual Logical Rationale for the Theme).
-    * *Why:* Prevents forced hardcoding (e.g., arbitrarily stopping at "5 Themes"). 
-*   **Step 1.3: Recursive Master Synthesis & Deduplication**  
-    * *What:* The entire corpus dataset is merged together, and the system deduplicates overlapping definitions into a uniform Master Ontology string.
-    * *Why:* By passing full description arrays to the Triple Extractor LLM, it actively reads exactly *why* a Master Theme exists, massively dropping Hallucinated routing in the raw relationship arrays!
+IsoKernel delegates execution sequentially dynamically scaling between probabilistic inference (Large Language Models) and deterministic mathematics.
 
----
+### Probabilistic (LLMs / Prompts)
+Used strictly for **contextual extraction** and **generative abstraction**.
+- **Theme Discovery & Consolidation**: Synthesizing raw text abstracts into conceptual domains.
+- **Triple Extraction**: Finding `<Subject>`, `<Predicate>`, `<Object>` elements strictly bound to defined ontological domains.
+- **Taxonomic Lifting**: Analyzing multiple synonymous strings and mathematically inferring the abstract Hypernym (e.g. `Patient`, `Patients` -> `Human`).
+- **Contextual Intercept Validation**: Looking at physically grouped concepts and verifying with domain logic that a merge will not destroy contextual distinction.
+- **Schema Generation**: Generating the final executable `Pydantic` Python source code blocks matching the geometric blueprints.
 
-### Phase 2: Topological Compression
-*The execution of algebraic geometry intercepting semantic models to mathematically shatter noise without LLM usage.*
-
-*   **Step 2.1: Localized Transformer Encodings (Jina)**  
-    * *What:* Utilizes `jinaai/jina-embeddings-v2-small-en` dynamically cached running entirely on local CPU/GPU hardware.
-    * *Why:* Extremely optimized 8k processing window structurally preventing any of your proprietary data arrays from leaving your network infrastructure securely natively.
-*   **Step 2.2: Spectral Vector Decomposition**  
-    * *What:* PCA eigenvalues violently shatter localized vector mappings around high-density terms mathematically!
-*   **Step 2.3: Structural Context Verification**  
-    * *What:* Mathematics occasionally groups antonyms (e.g., "Good" and "Bad" have high cosine similarity because they appear in identical grammatical structures). An LLM intercept acts as a semantic guardrail, unconditionally vetoing false positive math overlaps!
+### Deterministic (Physics / Topologies / Math)
+Used for **logic grounding**, **compression**, and **structural bounding**.
+- **Vector Space Encodings**: `SentenceTransformers` inherently plot phrases geometrically into hyperspace natively bypassing LLM drift.
+- **Frequency TF-IDF Gravities**: Concept density counts (Mathematical deduplication).
+- **Spectral Decomposition (PCA)**: Mathematically shearing away textual variance dynamically isolating only primary semantic eigenvectors.
+- **Agglomerative Spatial Clustering**: Hierarchical cosine similarity pairings utilizing average linkage geometries natively mapping concept proximities securely.
+- **t-SNE Geometries**: Visual squashing for scatter plots bridging multi-dimensional coordinates linearly.
+- **Louvain Community Detection**: NetworkX mathematical physics discovering unstructured community groupings iteratively across directional boundaries.
+- **Sub-graph Network Scraping**: Parsing directed edge relationships natively into root/nested recursive parent trees.
 
 ---
 
-### Phase 3: Graph Physics (Topological Mapping)
-*Determining relationships strictly based on Network math, entirely ignoring English semantics.*
+## 2. Comprehensive Pipeline Sequence
 
-*   **Step 3.1: Semantic Entropy Splitter**  
-    * *What:* Computes `$Weight = \log(\text{Total}/\text{Freq})$` natively across Edge matrices securely.
-    * *Why:* Generic text nodes (e.g., "He," "The Thing," or blank IDs) naturally flood graphs with noise. Entropy splitters drastically down-weight generic anomalies and heavily computationally attract structurally rare specific relationship identifiers, organically cracking massive datasets into hyper-distinct communities.
-*   **Step 3.2: Structural Jaccard Merging**  
-    * *What:* Analyzes distinct Louvain community sub-graphs and enforces rigid mathematical intersections ($>75\%$ overlap logic) successfully.
-    * *Why:* Sometimes 3 disconnected communities represent the exact identical data object with different masked names (e.g., User A, Account 1_X). Jaccard intersection strictly merges identical topological behaviors mathematically perfectly!
+The orchestrator fundamentally flows through four rigorously defined stages natively executed via the `IsoKernel_Demo.ipynb` notebook logic.
 
----
+### Phase 1: Contextual Extraction
+**Goal:** Ingest unstructured data and structurally abstract raw concept triplets iteratively.
 
-### Phase 4: Pydantic Code Synthesis (Schema Generation)
-*Transforming physical node typologies dynamically back into production Python domain classes accurately!*
+*   **Step 1.1: Document-Level Theme Discovery (LLM)**
+    *   *Reason*: LLMs perform best when bounded. To avoid hallucinated concepts, we map the document space first.
+*   **Step 1.2: Master Ontology Consolidation (LLM)**
+    *   *Reason*: When scaling across thousands of documents, themes drift. This consolidates hundreds of themes explicitly down into a locked ontological taxonomy.
+*   **Step 1.3: Schema-Bound Triplet Extraction (LLM)**
+    *   *Reason*: Instructs the LLM to pull Triples native exclusively to the allowed definitions of the Master Ontology preventing noise extraction.
 
-*   **Step 4.1: Structural Type-Casting (In/Out-Degree Physics)**  
-    * *What:* The system calculates literal Directed Graph In/Out Degree parameters mapping logically per node precisely securely correctly!
-    * *Why:* Rather than asking an AI to guess variable types...
-        * A Node with `High Out-Degree / Low In-Degree` is mathematically proven to be a **Root Class** (`Subject`).
-        * A Node with `High In-Degree / High Out-Degree` is a **Nested Sub-Class** (`List[Subject]`).
-        * A Node with `Zero Out-Degree` is a purely terminal value (**Enum Terminal Attribute**).
-*   **Step 4.2: Present-Tense Relational Verb Anchoring**  
-    * *What:* The dictionary key names mapped into the `schemas.py` output natively explicitly mirror exactly the active predicate-verb detected in the graph topology accurately (e.g., `writes_books`, `has_attributes`).
-    * *Why:* The final deterministic `.py` output flawlessly constructs Nested Object-Oriented payloads reflecting reality seamlessly mapping perfectly dynamically purely!
+### Phase 2: Topological Semantic Compression
+**Goal:** Convert massive sparse textual nodes into mathematically localized structures completely eliminating duplicates and semantic synonyms intrinsically.
+
+*   **Step 2.1: Semantic Gravity Maps (Math)**
+    *   *Reason*: Maps entities logically and captures their frequency density mathematically bridging text to topological components natively.
+*   **Step 2.2: Vector Encodings (Math)**
+    *   *Reason*: Embeds all unique strings via local models (e.g., `BAAI/bge-m3`) explicitly transforming textual data into computable multi-dimensional structures.
+*   **Step 2.3: Frequency-Weighted Spectral Decomposition [PCA] (Math)**
+    *   *Reason*: Eliminates underlying variance in embeddings mapping logic completely into condensed principal eigenvectors, stripping away "noise" to lock clusters tight.
+*   **Step 2.4: Agglomerative Structural Proposals (Math)**
+    *   *Reason*: Mathematically measures cosine similarities natively pairing shapes that belong natively to the identical sub-concepts explicitly aborting manually when the similarity threshold breaks natively.
+*   **Step 2.5: Contextual Intercept Guardrails (LLM/Math)**
+    *   *Reason*: Math lacks nuanced context (e.g., 'Mild Severity' and 'Moderate Severity' look identical mathematically, but are different medically). This explicitly deploys Pydantic validations halting destructive logical merges natively splitting them back into singletons securely.
+*   **Step 2.6: Taxonomic Hypernym Validation (LLM/Math)**
+    *   *Reason*: Isolates geometric centroids for each verified mapping grouping and deductively establishes the absolute hypernym native translation mapping over them centrally.
+
+### Phase 3: Graph Formation & Community Segregation
+**Goal:** Visualize and segment logic.
+
+*   **Step 3.1: Topological Substitution (Math)**
+    *   *Reason*: Overwrites all Phase 1 extractions mathematically using the heavily filtered Phase 2 taxonomic reductions uniformly compressing logic globally explicitly.
+*   **Step 3.2: Louvain Community Detection (Physics)**
+    *   *Reason*: Segments the directed edges mathematically analyzing density connectivity assigning structural bounds for schema segmentation isolating discrete functionality completely natively.
+
+### Phase 4: Executable Schema Synthesis
+**Goal:** Translate geometries back into executable Source Code dynamically.
+
+*   **Step 4.1: Mathematical Decomposition (Math)**
+    *   *Reason*: Dynamically converts Louvain groupings directly into hierarchical JSON bridging trees matching Root classes, nested bridges, and primitive variables.
+*   **Step 4.2: Pydantic Generation (LLM)**
+    *   *Reason*: Converts rigid hierarchical parameters gracefully into dynamically constrained python blocks naturally formatting logic dynamically without deviation native.
+*   **Step 4.3: Syntax Cleanout (Regex)**
+    *   *Reason*: Scrapes hallucinated sub-imports structurally locking everything precisely executing cleanly centrally natively.
