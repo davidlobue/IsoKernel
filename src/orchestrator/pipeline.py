@@ -122,7 +122,7 @@ class PipelineOrchestrator:
                         
             return consolidated
 
-        final_doc_themes = run_sync(_extract_all_themes(documents_to_process))
+        final_doc_themes = run_sync(_extract_all_themes, documents_to_process)
         self._clear_ollama_vram("Theme Extraction")
         
         output_dir = self.config.get("output", {}).get("themes_dir", "outputs/themes")
@@ -155,7 +155,7 @@ class PipelineOrchestrator:
                 "themes": [t.model_dump() for t in res.themes]
             }
 
-        master_themes = run_sync(_run_consolidation())
+        master_themes = run_sync(_run_consolidation)
         self._clear_ollama_vram("Theme Consolidation")
         
         output_dir = self.config.get("output", {}).get("themes_dir", "outputs/themes")
@@ -212,7 +212,7 @@ class PipelineOrchestrator:
                 all_triples.extend(res)
             return all_triples
 
-        final_triples = run_sync(_extract_all(documents_to_process))
+        final_triples = run_sync(_extract_all, documents_to_process)
         self._clear_ollama_vram("Triple Extraction")
         
         # Persist raw extractions log

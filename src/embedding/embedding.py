@@ -392,7 +392,7 @@ class EmbeddingService:
             tasks = [_process_batch(batch) for batch in batches]
             return await asyncio.gather(*tasks), tasks, async_client
 
-        results, tasks, async_client = run_sync(_run_normalization())
+        results, tasks, async_client = run_sync(_run_normalization)
         
         try:
             del tasks
@@ -473,7 +473,7 @@ class EmbeddingService:
             tasks = [_check_single(c_id, members) for c_id, members in clusters_to_verify.items()]
             return await asyncio.gather(*tasks), tasks, async_client
 
-        results, tasks, async_client = run_sync(_run_validations())
+        results, tasks, async_client = run_sync(_run_validations)
         
         # Free memory optimizations
         try:

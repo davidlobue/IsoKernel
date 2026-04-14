@@ -147,7 +147,7 @@ class SchemaSynthesizer:
             tasks = [_generate_single(c_id, p_load) for c_id, p_load in valid_payloads.items()]
             return await asyncio.gather(*tasks)
 
-        results = run_sync(_run_synthesis())
+        results = run_sync(_run_synthesis)
         
         try:
             import urllib.request
