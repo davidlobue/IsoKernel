@@ -120,10 +120,10 @@ class PipelineOrchestrator:
                         consolidated[orig_id].append(t)
                         seen_titles.add(t['title'])
                         
+            self._clear_ollama_vram("Theme Extraction")
             return consolidated
 
         final_doc_themes = run_sync(_extract_all_themes, documents_to_process)
-        self._clear_ollama_vram("Theme Extraction")
         
         output_dir = self.config.get("output", {}).get("themes_dir", "outputs/themes")
         os.makedirs(output_dir, exist_ok=True)
@@ -150,13 +150,13 @@ class PipelineOrchestrator:
             )
             res = await extractor.consolidate_themes(all_flattened_topics)
             await extractor.close()
+            self._clear_ollama_vram("Theme Consolidation")
             return {
                 "master_domain": res.master_domain,
                 "themes": [t.model_dump() for t in res.themes]
             }
 
         master_themes = run_sync(_run_consolidation)
-        self._clear_ollama_vram("Theme Consolidation")
         
         output_dir = self.config.get("output", {}).get("themes_dir", "outputs/themes")
         os.makedirs(output_dir, exist_ok=True)
@@ -210,10 +210,10 @@ class PipelineOrchestrator:
             all_triples = []
             for res in results:
                 all_triples.extend(res)
+            self._clear_ollama_vram("Triple Extraction")
             return all_triples
 
         final_triples = run_sync(_extract_all, documents_to_process)
-        self._clear_ollama_vram("Triple Extraction")
         
         # Persist raw extractions log
         out_dir = self.config.get("output", {}).get("schemas_dir", "outputs/schemas")

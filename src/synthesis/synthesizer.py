@@ -145,21 +145,23 @@ class SchemaSynthesizer:
                     return await self._generate_class(c_id, p_load, async_client)
                     
             tasks = [_generate_single(c_id, p_load) for c_id, p_load in valid_payloads.items()]
-            return await asyncio.gather(*tasks)
+            _res = await asyncio.gather(*tasks)
+
+            try:
+                import urllib.request
+                url = f"{os.getenv('LLM_BASE_URL', 'http://localhost:11434/v1').replace('/v1', '/api')}/generate"
+                model_name = os.getenv("LLM_MODEL_NAME", "gpt-4o")
+                data = json.dumps({"model": model_name, "keep_alive": 0}).encode("utf-8")
+                req = urllib.request.Request(url, data=data, headers={'Content-Type': 'application/json'})
+                urllib.request.urlopen(req, timeout=2.0)
+                logger.info(f"Cleared Memory & Ollama VRAM after Schema Synthesis.")
+            except Exception:
+                pass
+
+            return _res
 
         results = run_sync(_run_synthesis)
-        
-        try:
-            import urllib.request
-            url = f"{os.getenv('LLM_BASE_URL', 'http://localhost:11434/v1').replace('/v1', '/api')}/generate"
-            model_name = os.getenv("LLM_MODEL_NAME", "gpt-4o")
-            data = json.dumps({"model": model_name, "keep_alive": 0}).encode("utf-8")
-            req = urllib.request.Request(url, data=data, headers={'Content-Type': 'application/json'})
-            urllib.request.urlopen(req, timeout=2.0)
-            logger.info(f"Cleared Memory & Ollama VRAM after Schema Synthesis.")
-        except Exception:
-            pass
-            
+
         written_files = []
         master_file_path = os.path.join(self.output_dir, "schemas.py")
         

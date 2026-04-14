@@ -390,19 +390,20 @@ class EmbeddingService:
                         return {node: node for node in batch}
 
             tasks = [_process_batch(batch) for batch in batches]
-            return await asyncio.gather(*tasks), tasks, async_client
+            _res = await asyncio.gather(*tasks)
+
+            try:
+                import gc, requests
+                gc.collect()
+                url = f"{os.getenv('LLM_BASE_URL', 'http://localhost:11434/v1').replace('/v1', '/api')}/generate"
+                requests.post(url, json={"model": os.getenv("LLM_MODEL_NAME", "gpt-4o"), "keep_alive": 0}, timeout=5.0)
+                logger.info("Cleared Ollama VRAM after Preprocessing Normalization.")
+            except Exception:
+                pass
+                
+            return _res, tasks, async_client
 
         results, tasks, async_client = run_sync(_run_normalization)
-        
-        try:
-            del tasks
-            del async_client
-            gc.collect()
-            url = f"{os.getenv('LLM_BASE_URL', 'http://localhost:11434/v1').replace('/v1', '/api')}/generate"
-            requests.post(url, json={"model": os.getenv("LLM_MODEL_NAME", "gpt-4o"), "keep_alive": 0}, timeout=5.0)
-            logger.info("Cleared Ollama VRAM after Preprocessing Normalization.")
-        except Exception:
-            pass
 
         final_mapping = {}
         for r in results:
@@ -471,25 +472,21 @@ class EmbeddingService:
                         return c_id, members, True, str(e), "Exception Fallback"
                         
             tasks = [_check_single(c_id, members) for c_id, members in clusters_to_verify.items()]
-            return await asyncio.gather(*tasks), tasks, async_client
+            _res = await asyncio.gather(*tasks)
+
+            try:
+                import gc, requests
+                gc.collect()
+                url = f"{os.getenv('LLM_BASE_URL', 'http://localhost:11434/v1').replace('/v1', '/api')}/generate"
+                requests.post(url, json={"model": os.getenv("LLM_MODEL_NAME", "gpt-4o"), "keep_alive": 0}, timeout=5.0)
+                logger.info("Cleared Ollama VRAM after Contextual Validation.")
+            except Exception:
+                pass
+
+            return _res, tasks, async_client
 
         results, tasks, async_client = run_sync(_run_validations)
-        
-        # Free memory optimizations
-        try:
-            del tasks
-            del async_client
-        except Exception:
-            pass
-        gc.collect()
-        
-        try:
-            url = f"{os.getenv('LLM_BASE_URL', 'http://localhost:11434/v1').replace('/v1', '/api')}/generate"
-            requests.post(url, json={"model": os.getenv("LLM_MODEL_NAME", "gpt-4o"), "keep_alive": 0}, timeout=5.0)
-            logger.info("Cleared Ollama VRAM after Contextual Validation.")
-        except Exception:
-            pass
-        
+
         split_counter = 99000  # Offset to strictly prevent overlapping singleton ID collisions
         rejected_attempts = []
         for c_id, members, accuracy_destroyed, reasoning, condition_detected in results:
