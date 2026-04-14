@@ -3,15 +3,10 @@ import json
 import asyncio
 import yaml
 from src.core.logger import setup_logger
+from src.core.utils import run_sync
 from src.core.models import DocumentSource
 from src.extraction.extractor import TripleExtractor
 from src.topology.processor import GraphProcessor
-
-try:
-    import nest_asyncio
-    nest_asyncio.apply()
-except ImportError:
-    pass
 
 logger = setup_logger("orchestrator")
 
@@ -127,8 +122,7 @@ class PipelineOrchestrator:
                         
             return consolidated
 
-        loop = asyncio.get_event_loop()
-        final_doc_themes = loop.run_until_complete(_extract_all_themes(documents_to_process))
+        final_doc_themes = run_sync(_extract_all_themes(documents_to_process))
         self._clear_ollama_vram("Theme Extraction")
         
         output_dir = self.config.get("output", {}).get("themes_dir", "outputs/themes")
@@ -161,8 +155,7 @@ class PipelineOrchestrator:
                 "themes": [t.model_dump() for t in res.themes]
             }
 
-        loop = asyncio.get_event_loop()
-        master_themes = loop.run_until_complete(_run_consolidation())
+        master_themes = run_sync(_run_consolidation())
         self._clear_ollama_vram("Theme Consolidation")
         
         output_dir = self.config.get("output", {}).get("themes_dir", "outputs/themes")
@@ -219,8 +212,7 @@ class PipelineOrchestrator:
                 all_triples.extend(res)
             return all_triples
 
-        loop = asyncio.get_event_loop()
-        final_triples = loop.run_until_complete(_extract_all(documents_to_process))
+        final_triples = run_sync(_extract_all(documents_to_process))
         self._clear_ollama_vram("Triple Extraction")
         
         # Persist raw extractions log

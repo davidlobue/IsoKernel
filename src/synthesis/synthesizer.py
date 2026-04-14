@@ -7,6 +7,7 @@ import networkx as nx
 from openai import AsyncOpenAI
 from src.synthesis.prompts import SynthesisPrompts
 from src.core.models import GeneratedSchema
+from src.core.utils import run_sync
 
 logger = logging.getLogger(__name__)
 
@@ -146,8 +147,7 @@ class SchemaSynthesizer:
             tasks = [_generate_single(c_id, p_load) for c_id, p_load in valid_payloads.items()]
             return await asyncio.gather(*tasks)
 
-        loop = asyncio.get_event_loop()
-        results = loop.run_until_complete(_run_synthesis())
+        results = run_sync(_run_synthesis())
         
         try:
             import urllib.request
