@@ -74,12 +74,12 @@ class PipelineOrchestrator:
     def extract_themes(self, documents_to_process: list) -> dict:
         from src.core.chunking import SemanticChunker
         ext_cfg = self.config.get("extraction", {})
-        extractor = TripleExtractor(
-            model=ext_cfg.get("model", None),
-            domain=self.domain if self.domain else ext_cfg.get("domain", "general knowledge")
-        )
         
         async def _extract_all_themes(docs):
+            extractor = TripleExtractor(
+                model=ext_cfg.get("model", None),
+                domain=self.domain if self.domain else ext_cfg.get("domain", "general knowledge")
+            )
             max_concurrent = self.config.get("pipeline", {}).get("max_concurrent_llm_calls", 3)
             sem = asyncio.Semaphore(max_concurrent)
             
@@ -134,10 +134,6 @@ class PipelineOrchestrator:
 
     def consolidate_themes(self, theme_maps: dict) -> dict:
         ext_cfg = self.config.get("extraction", {})
-        extractor = TripleExtractor(
-            model=ext_cfg.get("model", None),
-            domain=self.domain if self.domain else ext_cfg.get("domain", "general knowledge")
-        )
         
         # Flatten dict mapping into a massive string output list
         all_flattened_topics = []
@@ -148,6 +144,10 @@ class PipelineOrchestrator:
         logger.info(f"Consolidating {len(all_flattened_topics)} document-level themes into a Master Corpus Ontology...")
         
         async def _run_consolidation():
+            extractor = TripleExtractor(
+                model=ext_cfg.get("model", None),
+                domain=self.domain if self.domain else ext_cfg.get("domain", "general knowledge")
+            )
             res = await extractor.consolidate_themes(all_flattened_topics)
             await extractor.close()
             return {
@@ -168,12 +168,12 @@ class PipelineOrchestrator:
     def extract_triples(self, documents_to_process: list, discovered_themes_map: dict = None) -> list:
         from src.core.chunking import SemanticChunker
         ext_cfg = self.config.get("extraction", {})
-        extractor = TripleExtractor(
-            model=ext_cfg.get("model", None),
-            domain=self.domain if self.domain else ext_cfg.get("domain", "general knowledge")
-        )
         
         async def _extract_all(docs):
+            extractor = TripleExtractor(
+                model=ext_cfg.get("model", None),
+                domain=self.domain if self.domain else ext_cfg.get("domain", "general knowledge")
+            )
             max_concurrent = self.config.get("pipeline", {}).get("max_concurrent_llm_calls", 3)
             sem = asyncio.Semaphore(max_concurrent)
             
