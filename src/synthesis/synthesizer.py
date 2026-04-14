@@ -148,6 +148,11 @@ class SchemaSynthesizer:
             _res = await asyncio.gather(*tasks)
 
             try:
+                await client.close()
+            except Exception:
+                pass
+
+            try:
                 import urllib.request
                 url = f"{os.getenv('LLM_BASE_URL', 'http://localhost:11434/v1').replace('/v1', '/api')}/generate"
                 model_name = os.getenv("LLM_MODEL_NAME", "gpt-4o")

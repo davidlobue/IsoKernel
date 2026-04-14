@@ -393,10 +393,18 @@ class EmbeddingService:
             _res = await asyncio.gather(*tasks)
 
             try:
-                import gc, requests
+                await client.close()
+            except Exception:
+                pass
+
+            try:
+                import gc, json, urllib.request
                 gc.collect()
                 url = f"{os.getenv('LLM_BASE_URL', 'http://localhost:11434/v1').replace('/v1', '/api')}/generate"
-                requests.post(url, json={"model": os.getenv("LLM_MODEL_NAME", "gpt-4o"), "keep_alive": 0}, timeout=5.0)
+                model_name = os.getenv("LLM_MODEL_NAME", "gpt-4o")
+                data = json.dumps({"model": model_name, "keep_alive": 0}).encode("utf-8")
+                req = urllib.request.Request(url, data=data, headers={'Content-Type': 'application/json'})
+                urllib.request.urlopen(req, timeout=2.0)
                 logger.info("Cleared Ollama VRAM after Preprocessing Normalization.")
             except Exception:
                 pass
@@ -475,10 +483,18 @@ class EmbeddingService:
             _res = await asyncio.gather(*tasks)
 
             try:
-                import gc, requests
+                await client.close()
+            except Exception:
+                pass
+
+            try:
+                import gc, json, urllib.request
                 gc.collect()
                 url = f"{os.getenv('LLM_BASE_URL', 'http://localhost:11434/v1').replace('/v1', '/api')}/generate"
-                requests.post(url, json={"model": os.getenv("LLM_MODEL_NAME", "gpt-4o"), "keep_alive": 0}, timeout=5.0)
+                model_name = os.getenv("LLM_MODEL_NAME", "gpt-4o")
+                data = json.dumps({"model": model_name, "keep_alive": 0}).encode("utf-8")
+                req = urllib.request.Request(url, data=data, headers={'Content-Type': 'application/json'})
+                urllib.request.urlopen(req, timeout=2.0)
                 logger.info("Cleared Ollama VRAM after Contextual Validation.")
             except Exception:
                 pass
