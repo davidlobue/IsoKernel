@@ -100,13 +100,15 @@ class SchemaSynthesizer:
             logger.info(f"Synthesizing Topologic Community {comm_id} -> Pydantic Models natively...")
             data_json = json.dumps(payload, indent=2)
             
+            extra_kwargs = {"extra_body": {"keep_alive": -1}} if os.getenv("LLM_PROVIDER", "openai").lower() == "local" else {}
             res = await async_client.chat.completions.create(
                 model=os.getenv("LLM_MODEL_NAME", "gpt-4o"),
                 messages=[
                     {"role": "system", "content": SynthesisPrompts.SCHEMA_GENERATION_SYSTEM},
                     {"role": "user", "content": SynthesisPrompts.get_schema_user(data_json)}
                 ],
-                response_model=GeneratedSchema
+                response_model=GeneratedSchema,
+                **extra_kwargs
             )
             return comm_id, res.class_name, res.python_code
         except Exception as e:
@@ -144,8 +146,15 @@ class SchemaSynthesizer:
                 async with sem:
                     return await self._generate_class(c_id, p_load, async_client)
                     
+            execution_mode = self.config.get("pipeline", {}).get("execution_mode", "asynchronous")
             tasks = [_generate_single(c_id, p_load) for c_id, p_load in valid_payloads.items()]
-            _res = await asyncio.gather(*tasks)
+            
+            if execution_mode == "synchronous":
+                _res = []
+                for t in tasks:
+                    _res.append(await t)
+            else:
+                _res = await asyncio.gather(*tasks)
 
             try:
                 await client.close()

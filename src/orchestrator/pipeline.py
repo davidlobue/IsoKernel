@@ -102,8 +102,15 @@ class PipelineOrchestrator:
                         logger.error(f"Failed to discover themes for chunk {vdoc.id}: {e}")
                         return orig_id, []
 
+            execution_mode = self.config.get("pipeline", {}).get("execution_mode", "asynchronous")
             tasks = [_extract_single(orig_id, vdoc, i * 0.5) for i, (orig_id, vdoc) in enumerate(virtual_chunks)]
-            results = await asyncio.gather(*tasks)
+            
+            if execution_mode == "synchronous":
+                results = []
+                for t in tasks:
+                    results.append(await t)
+            else:
+                results = await asyncio.gather(*tasks)
             
             await extractor.close()
             
@@ -202,8 +209,15 @@ class PipelineOrchestrator:
                         return []
 
             # Stagger the start of each request gracefully bounding overlapping scaling logically
+            execution_mode = self.config.get("pipeline", {}).get("execution_mode", "asynchronous")
             tasks = [_extract_single(orig_id, vdoc, i * 0.5) for i, (orig_id, vdoc) in enumerate(virtual_chunks)]
-            results = await asyncio.gather(*tasks)
+            
+            if execution_mode == "synchronous":
+                results = []
+                for t in tasks:
+                    results.append(await t)
+            else:
+                results = await asyncio.gather(*tasks)
             
             await extractor.close()
             
@@ -324,7 +338,8 @@ class PipelineOrchestrator:
             hypernym_resolution=ref_cfg.get("hypernym_resolution", "shortest_string"),
             use_spectral_decomposition=ref_cfg.get("use_spectral_decomposition", True),
             spectral_variance_retention=ref_cfg.get("spectral_variance_retention", 0.90),
-            max_concurrent_llm_calls=self.config.get("pipeline", {}).get("max_concurrent_llm_calls", 3)
+            max_concurrent_llm_calls=self.config.get("pipeline", {}).get("max_concurrent_llm_calls", 3),
+            execution_mode=self.config.get("pipeline", {}).get("execution_mode", "asynchronous")
         )
 
     def extract_unique_nodes(self, triples: list) -> dict:

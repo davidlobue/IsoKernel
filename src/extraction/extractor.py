@@ -31,17 +31,6 @@ class TripleExtractor:
             self._raw_client = AsyncOpenAI(base_url=self.base_url, api_key="ollama")
             self.async_client = instructor.from_openai(self._raw_client, mode=instructor.Mode.JSON)
             
-        elif self.provider == "google":
-            logger.info("Configuring Google Vertex provider...")
-            try:
-                import vertexai
-                from vertexai.generative_models import GenerativeModel
-                model_instance = GenerativeModel(self.model_name)
-                self.async_client = instructor.from_vertexai(model_instance, mode=instructor.Mode.VERTEXAI_TOOLS)
-            except ImportError as e:
-                logger.error("google-cloud-aiplatform is required for vertexai")
-                raise e
-                
         else: # Default openAI
             logger.info("Configuring Async OpenAI provider...")
             self._raw_client = AsyncOpenAI()
@@ -62,13 +51,15 @@ class TripleExtractor:
         """
         Uses Instructor to execute 'Pass A': Discovering macro-themes.
         """
+        extra_kwargs = {"extra_body": {"keep_alive": -1}} if self.provider == "local" else {}
         response = await self.async_client.chat.completions.create(
             model=self.model_name,
             messages=[
                 {"role": "system", "content": Prompts.THEME_DISCOVERY_SYSTEM},
                 {"role": "user", "content": Prompts.get_theme_discovery_user(document.text_content)}
             ],
-            response_model=ThemeDiscoveryResult
+            response_model=ThemeDiscoveryResult,
+            **extra_kwargs
         )
         return response
 
@@ -78,13 +69,15 @@ class TripleExtractor:
         """
         import json
         formatted_themes = json.dumps(all_themes, indent=2)
+        extra_kwargs = {"extra_body": {"keep_alive": -1}} if self.provider == "local" else {}
         response = await self.async_client.chat.completions.create(
             model=self.model_name,
             messages=[
                 {"role": "system", "content": Prompts.MASTER_THEME_SYSTEM},
                 {"role": "user", "content": Prompts.get_master_theme_user(formatted_themes)}
             ],
-            response_model=MasterThemeSynthesisResult
+            response_model=MasterThemeSynthesisResult,
+            **extra_kwargs
         )
         return response
 
@@ -92,13 +85,15 @@ class TripleExtractor:
         """
         Uses Instructor to execute 'Pass B': Extracting raw semantic Triples and routing them to themes.
         """
+        extra_kwargs = {"extra_body": {"keep_alive": -1}} if self.provider == "local" else {}
         response = await self.async_client.chat.completions.create(
             model=self.model_name,
             messages=[
                 {"role": "system", "content": Prompts.DISCOVERY_SYSTEM},
                 {"role": "user", "content": Prompts.get_discovery_user(document.text_content, themes)}
             ],
-            response_model=TripleExtractionResult
+            response_model=TripleExtractionResult,
+            **extra_kwargs
         )
         return response
 

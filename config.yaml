@@ -4,6 +4,7 @@ pipeline:
   run_phase_1: true
   run_phase_2: true
   run_phase_4: true
+  execution_mode: "asynchronous"
   max_concurrent_llm_calls: 3
   
 extraction:

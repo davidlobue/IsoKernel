@@ -1,4 +1,5 @@
 import logging
+import json
 from typing import List, Dict, Any, Tuple
 from src.core.logger import setup_logger
 from src.core.utils import run_sync
@@ -15,7 +16,8 @@ class EmbeddingService:
                  hypernym_resolution: str = "semantic_centroid",
                  use_spectral_decomposition: bool = True,
                  spectral_variance_retention: float = 0.90,
-                 max_concurrent_llm_calls: int = 3):
+                 max_concurrent_llm_calls: int = 3,
+                 execution_mode: str = "asynchronous"):
         import os
         
         # Check if localized model exists in lib/models/
@@ -35,6 +37,7 @@ class EmbeddingService:
         self.hypernym_resolution = hypernym_resolution
         self.use_spectral_decomposition = use_spectral_decomposition
         self.spectral_variance_retention = spectral_variance_retention
+        self.execution_mode = execution_mode
         
         self.embedder = None
         self.sync_client = None
@@ -55,14 +58,6 @@ class EmbeddingService:
             if provider == "local":
                 client = OpenAI(base_url=base_url, api_key="ollama")
                 self.sync_client = instructor.from_openai(client, mode=instructor.Mode.JSON)
-            elif provider == "google":
-                try:
-                    import vertexai
-                    from vertexai.generative_models import GenerativeModel
-                    model_instance = GenerativeModel(self.llm_model)
-                    self.sync_client = instructor.from_vertexai(model_instance, mode=instructor.Mode.VERTEXAI_TOOLS)
-                except ImportError:
-                    logger.error("google-cloud-aiplatform is required for vertexai in synchronous mode")
             else:
                 self.sync_client = instructor.from_openai(OpenAI())
                 
@@ -195,7 +190,6 @@ class EmbeddingService:
                 }
                 
             if self.sync_client:
-                import json
                 from src.embedding.prompts import EmbeddingPrompts
                 from src.core.models import TaxonomicLiftingResult
                 
@@ -208,13 +202,15 @@ class EmbeddingService:
                 
                 logger.info(f"Submitting {len(centroid_clusters)} isolated centroids for Taxonomic Lifting deductive logic...")
                 try:
+                    extra_kwargs = {"extra_body": {"keep_alive": -1}} if os.getenv("LLM_PROVIDER", "openai").lower() == "local" else {}
                     response = self.sync_client.chat.completions.create(
                         model=self.llm_model,
                         messages=[
                             {"role": "system", "content": EmbeddingPrompts.TAXONOMIC_LIFTING_SYSTEM},
                             {"role": "user", "content": EmbeddingPrompts.get_taxonomic_user(json.dumps(payload_json_data, indent=2), master_domain)}
                         ],
-                        response_model=TaxonomicLiftingResult
+                        response_model=TaxonomicLiftingResult,
+                        **extra_kwargs
                     )
                     
                     resolution_map = {}
@@ -266,20 +262,21 @@ class EmbeddingService:
                         }
                         
         elif self.hypernym_resolution == "llm_resolution" and self.sync_client:
-            import json
             from src.embedding.prompts import EmbeddingPrompts
             from src.core.models import LLMHypernymResolutionResult
             
             logger.info(f"Sending {len(clusters)} clusters to LLM for semantic hypernym resolution...")
             
             try:
+                extra_kwargs = {"extra_body": {"keep_alive": -1}} if os.getenv("LLM_PROVIDER", "openai").lower() == "local" else {}
                 response = self.sync_client.chat.completions.create(
                     model=self.llm_model,
                     messages=[
                         {"role": "system", "content": EmbeddingPrompts.HYPERNYM_SYSTEM},
                         {"role": "user", "content": EmbeddingPrompts.get_hypernym_user(json.dumps(clusters, indent=2), master_domain)}
                     ],
-                    response_model=LLMHypernymResolutionResult
+                    response_model=LLMHypernymResolutionResult,
+                    **extra_kwargs
                 )
                 
                 resolution_map = {str(res.cluster_id): res.canonical_string for res in response.resolutions}
@@ -321,7 +318,7 @@ class EmbeddingService:
                     }
         
         try:
-            import json, urllib.request, os
+            import urllib.request, os
             url = f"{os.getenv('LLM_BASE_URL', 'http://localhost:11434/v1').replace('/v1', '/api')}/generate"
             model_name = os.getenv("LLM_MODEL_NAME", "gpt-4o")
             data = json.dumps({"model": model_name, "keep_alive": 0}).encode("utf-8")
@@ -340,7 +337,6 @@ class EmbeddingService:
 
         import asyncio
         import os
-        import json
         import gc
         import requests
         from openai import AsyncOpenAI
@@ -368,13 +364,15 @@ class EmbeddingService:
                     payload_json = json.dumps(cluster_payload, indent=2)
                     
                     try:
+                        extra_kwargs = {"extra_body": {"keep_alive": -1}} if os.getenv("LLM_PROVIDER", "openai").lower() == "local" else {}
                         res = await async_client.chat.completions.create(
                             model=os.getenv("LLM_MODEL_NAME", "gpt-4o"),
                             messages=[
                                 {"role": "system", "content": EmbeddingPrompts.HYPERNYM_SYSTEM},
                                 {"role": "user", "content": EmbeddingPrompts.get_hypernym_user(payload_json, master_domain)}
                             ],
-                            response_model=LLMHypernymResolutionResult
+                            response_model=LLMHypernymResolutionResult,
+                            **extra_kwargs
                         )
                         
                         # Map back n_i to original node text, and assign canonical output
@@ -390,7 +388,12 @@ class EmbeddingService:
                         return {node: node for node in batch}
 
             tasks = [_process_batch(batch) for batch in batches]
-            _res = await asyncio.gather(*tasks)
+            if self.execution_mode == "synchronous":
+                _res = []
+                for t in tasks:
+                    _res.append(await t)
+            else:
+                _res = await asyncio.gather(*tasks)
 
             try:
                 await client.close()
@@ -398,7 +401,7 @@ class EmbeddingService:
                 pass
 
             try:
-                import gc, json, urllib.request
+                import gc, urllib.request
                 gc.collect()
                 url = f"{os.getenv('LLM_BASE_URL', 'http://localhost:11434/v1').replace('/v1', '/api')}/generate"
                 model_name = os.getenv("LLM_MODEL_NAME", "gpt-4o")
@@ -446,7 +449,7 @@ class EmbeddingService:
         if not clusters_to_verify:
              return verified_clusters
              
-        import os, instructor, json, asyncio
+        import os, instructor, asyncio
         import gc
         import requests
         from openai import AsyncOpenAI
@@ -466,13 +469,15 @@ class EmbeddingService:
                 async with sem:
                     payload = json.dumps({"cluster_id": c_id, "proposed_members": members})
                     try:
+                        extra_kwargs = {"extra_body": {"keep_alive": -1}} if os.getenv("LLM_PROVIDER", "openai").lower() == "local" else {}
                         res = await async_client.chat.completions.create(
                             model=os.getenv("LLM_MODEL_NAME", "gpt-4o"),
                             messages=[
                                 {"role": "system", "content": EmbeddingPrompts.CONTEXTUAL_VALIDATION_SYSTEM},
                                 {"role": "user", "content": EmbeddingPrompts.get_validation_user(payload, master_domain)}
                             ],
-                            response_model=ClusterContextualValidation
+                            response_model=ClusterContextualValidation,
+                            **extra_kwargs
                         )
                         return c_id, members, res.accuracy_destroyed, res.reasoning, res.condition_detected
                     except Exception as e:
@@ -480,7 +485,12 @@ class EmbeddingService:
                         return c_id, members, True, str(e), "Exception Fallback"
                         
             tasks = [_check_single(c_id, members) for c_id, members in clusters_to_verify.items()]
-            _res = await asyncio.gather(*tasks)
+            if self.execution_mode == "synchronous":
+                _res = []
+                for t in tasks:
+                    _res.append(await t)
+            else:
+                _res = await asyncio.gather(*tasks)
 
             try:
                 await client.close()
@@ -488,7 +498,7 @@ class EmbeddingService:
                 pass
 
             try:
-                import gc, json, urllib.request
+                import gc, urllib.request
                 gc.collect()
                 url = f"{os.getenv('LLM_BASE_URL', 'http://localhost:11434/v1').replace('/v1', '/api')}/generate"
                 model_name = os.getenv("LLM_MODEL_NAME", "gpt-4o")
