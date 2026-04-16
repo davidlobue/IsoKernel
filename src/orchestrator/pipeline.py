@@ -84,9 +84,16 @@ class PipelineOrchestrator:
             sem = asyncio.Semaphore(max_concurrent)
             
             # 1. Expand standard documents into heavily chunked overlaps
+            theme_chunk_max_words = ext_cfg.get("theme_chunk_max_words", 4000)
+            if ext_cfg.get("dynamic_manage_context") == 1:
+                from src.orchestrator.context_manager import ContextManager
+                model_name = os.getenv("LLM_MODEL_NAME", ext_cfg.get("model", ""))
+                theme_chunk_max_words = ContextManager.calculate_max_chunk_words(model_name)
+                logger.info(f"Dynamic Context Manager securely mapped theme boundaries to {theme_chunk_max_words} max words based on VRAM topology.")
+                
             virtual_chunks = []
             for doc in docs:
-                chunks = SemanticChunker.chunk_text(doc.text_content, max_words=ext_cfg.get("theme_chunk_max_words", 4000), overlap=21)
+                chunks = SemanticChunker.chunk_text(doc.text_content, max_words=theme_chunk_max_words, overlap=21)
                 for idx, text in enumerate(chunks):
                     virtual_chunks.append((doc.id, DocumentSource(id=f"{doc.id}_chunk_{idx}", text_content=text)))
             
@@ -185,9 +192,16 @@ class PipelineOrchestrator:
             sem = asyncio.Semaphore(max_concurrent)
             
             # 1. Expand logically tracking the specific boundaries exactly dynamically explicitly
+            triple_chunk_max_words = ext_cfg.get("triple_chunk_max_words", 1000)
+            if ext_cfg.get("dynamic_manage_context") == 1:
+                from src.orchestrator.context_manager import ContextManager
+                model_name = os.getenv("LLM_MODEL_NAME", ext_cfg.get("model", ""))
+                triple_chunk_max_words = ContextManager.calculate_max_chunk_words(model_name)
+                logger.info(f"Dynamic Context Manager logically bound Triplet extract sequence firmly to {triple_chunk_max_words} words dynamically.")
+                
             virtual_chunks = []
             for doc in docs:
-                chunks = SemanticChunker.chunk_text(doc.text_content, max_words=ext_cfg.get("triple_chunk_max_words", 1000), overlap=50)
+                chunks = SemanticChunker.chunk_text(doc.text_content, max_words=triple_chunk_max_words, overlap=50)
                 for idx, text in enumerate(chunks):
                     virtual_chunks.append((doc.id, DocumentSource(id=f"{doc.id}_chunk_{idx}", text_content=text)))
             

@@ -10,6 +10,7 @@ pipeline:
 extraction:
   domain: "general knowledge"
   max_retries: 3
+  dynamic_manage_context: 1
   theme_chunk_max_words: 4000
   triple_chunk_max_words: 3000
   

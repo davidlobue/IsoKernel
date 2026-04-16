@@ -100,7 +100,18 @@ class SchemaSynthesizer:
             logger.info(f"Synthesizing Topologic Community {comm_id} -> Pydantic Models natively...")
             data_json = json.dumps(payload, indent=2)
             
-            extra_kwargs = {"extra_body": {"keep_alive": -1}} if os.getenv("LLM_PROVIDER", "openai").lower() == "local" else {}
+            if os.getenv("LLM_PROVIDER", "openai").lower() == "local":
+                from src.orchestrator.context_manager import ContextManager
+                model = os.getenv("LLM_MODEL_NAME", "gpt-4o")
+                safe_tokens = ContextManager.get_safe_context_tokens(model)
+                extra_kwargs = {
+                    "extra_body": {
+                        "keep_alive": -1,
+                        "options": {"num_ctx": safe_tokens}
+                    }
+                }
+            else:
+                extra_kwargs = {}
             res = await async_client.chat.completions.create(
                 model=os.getenv("LLM_MODEL_NAME", "gpt-4o"),
                 messages=[

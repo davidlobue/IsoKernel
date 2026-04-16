@@ -58,8 +58,17 @@ class EmbeddingService:
             if provider == "local":
                 client = OpenAI(base_url=base_url, api_key="ollama")
                 self.sync_client = instructor.from_openai(client, mode=instructor.Mode.JSON)
+                from src.orchestrator.context_manager import ContextManager
+                safe_tokens = ContextManager.get_safe_context_tokens(self.llm_model)
+                self._base_extra_kwargs = {
+                    "extra_body": {
+                        "keep_alive": -1,
+                        "options": {"num_ctx": safe_tokens}
+                    }
+                }
             else:
                 self.sync_client = instructor.from_openai(OpenAI())
+                self._base_extra_kwargs = {}
                 
         logger.info(f"Initializing embedding model '{self.embedding_model}'")
         try:
@@ -202,7 +211,6 @@ class EmbeddingService:
                 
                 logger.info(f"Submitting {len(centroid_clusters)} isolated centroids for Taxonomic Lifting deductive logic...")
                 try:
-                    extra_kwargs = {"extra_body": {"keep_alive": -1}} if os.getenv("LLM_PROVIDER", "openai").lower() == "local" else {}
                     response = self.sync_client.chat.completions.create(
                         model=self.llm_model,
                         messages=[
@@ -210,7 +218,7 @@ class EmbeddingService:
                             {"role": "user", "content": EmbeddingPrompts.get_taxonomic_user(json.dumps(payload_json_data, indent=2), master_domain)}
                         ],
                         response_model=TaxonomicLiftingResult,
-                        **extra_kwargs
+                        **self._base_extra_kwargs
                     )
                     
                     resolution_map = {}
@@ -268,7 +276,6 @@ class EmbeddingService:
             logger.info(f"Sending {len(clusters)} clusters to LLM for semantic hypernym resolution...")
             
             try:
-                extra_kwargs = {"extra_body": {"keep_alive": -1}} if os.getenv("LLM_PROVIDER", "openai").lower() == "local" else {}
                 response = self.sync_client.chat.completions.create(
                     model=self.llm_model,
                     messages=[
@@ -276,7 +283,7 @@ class EmbeddingService:
                         {"role": "user", "content": EmbeddingPrompts.get_hypernym_user(json.dumps(clusters, indent=2), master_domain)}
                     ],
                     response_model=LLMHypernymResolutionResult,
-                    **extra_kwargs
+                    **self._base_extra_kwargs
                 )
                 
                 resolution_map = {str(res.cluster_id): res.canonical_string for res in response.resolutions}
@@ -364,7 +371,6 @@ class EmbeddingService:
                     payload_json = json.dumps(cluster_payload, indent=2)
                     
                     try:
-                        extra_kwargs = {"extra_body": {"keep_alive": -1}} if os.getenv("LLM_PROVIDER", "openai").lower() == "local" else {}
                         res = await async_client.chat.completions.create(
                             model=os.getenv("LLM_MODEL_NAME", "gpt-4o"),
                             messages=[
@@ -372,7 +378,7 @@ class EmbeddingService:
                                 {"role": "user", "content": EmbeddingPrompts.get_hypernym_user(payload_json, master_domain)}
                             ],
                             response_model=LLMHypernymResolutionResult,
-                            **extra_kwargs
+                            **self._base_extra_kwargs
                         )
                         
                         # Map back n_i to original node text, and assign canonical output
@@ -469,7 +475,6 @@ class EmbeddingService:
                 async with sem:
                     payload = json.dumps({"cluster_id": c_id, "proposed_members": members})
                     try:
-                        extra_kwargs = {"extra_body": {"keep_alive": -1}} if os.getenv("LLM_PROVIDER", "openai").lower() == "local" else {}
                         res = await async_client.chat.completions.create(
                             model=os.getenv("LLM_MODEL_NAME", "gpt-4o"),
                             messages=[
@@ -477,7 +482,7 @@ class EmbeddingService:
                                 {"role": "user", "content": EmbeddingPrompts.get_validation_user(payload, master_domain)}
                             ],
                             response_model=ClusterContextualValidation,
-                            **extra_kwargs
+                            **self._base_extra_kwargs
                         )
                         return c_id, members, res.accuracy_destroyed, res.reasoning, res.condition_detected
                     except Exception as e:

@@ -31,10 +31,20 @@ class TripleExtractor:
             self._raw_client = AsyncOpenAI(base_url=self.base_url, api_key="ollama")
             self.async_client = instructor.from_openai(self._raw_client, mode=instructor.Mode.JSON)
             
+            from src.orchestrator.context_manager import ContextManager
+            safe_tokens = ContextManager.get_safe_context_tokens(self.model_name)
+            self._base_extra_kwargs = {
+                "extra_body": {
+                    "keep_alive": -1,
+                    "options": {"num_ctx": safe_tokens}
+                }
+            }
+            
         else: # Default openAI
             logger.info("Configuring Async OpenAI provider...")
             self._raw_client = AsyncOpenAI()
             self.async_client = instructor.from_openai(self._raw_client)
+            self._base_extra_kwargs = {}
             
         logger.info(f"Initialized TripleExtractor for domain '{self.domain}' using model '{self.model_name}' via '{self.provider}'")
 
@@ -51,7 +61,6 @@ class TripleExtractor:
         """
         Uses Instructor to execute 'Pass A': Discovering macro-themes.
         """
-        extra_kwargs = {"extra_body": {"keep_alive": -1}} if self.provider == "local" else {}
         response = await self.async_client.chat.completions.create(
             model=self.model_name,
             messages=[
@@ -59,7 +68,7 @@ class TripleExtractor:
                 {"role": "user", "content": Prompts.get_theme_discovery_user(document.text_content)}
             ],
             response_model=ThemeDiscoveryResult,
-            **extra_kwargs
+            **self._base_extra_kwargs
         )
         return response
 
@@ -67,9 +76,7 @@ class TripleExtractor:
         """
         Uses Instructor to execute 'Pass A.5': Consolidating macro-themes into a master list.
         """
-        import json
         formatted_themes = json.dumps(all_themes, indent=2)
-        extra_kwargs = {"extra_body": {"keep_alive": -1}} if self.provider == "local" else {}
         response = await self.async_client.chat.completions.create(
             model=self.model_name,
             messages=[
@@ -77,7 +84,7 @@ class TripleExtractor:
                 {"role": "user", "content": Prompts.get_master_theme_user(formatted_themes)}
             ],
             response_model=MasterThemeSynthesisResult,
-            **extra_kwargs
+            **self._base_extra_kwargs
         )
         return response
 
@@ -85,7 +92,6 @@ class TripleExtractor:
         """
         Uses Instructor to execute 'Pass B': Extracting raw semantic Triples and routing them to themes.
         """
-        extra_kwargs = {"extra_body": {"keep_alive": -1}} if self.provider == "local" else {}
         response = await self.async_client.chat.completions.create(
             model=self.model_name,
             messages=[
@@ -93,7 +99,7 @@ class TripleExtractor:
                 {"role": "user", "content": Prompts.get_discovery_user(document.text_content, themes)}
             ],
             response_model=TripleExtractionResult,
-            **extra_kwargs
+            **self._base_extra_kwargs
         )
         return response
 
